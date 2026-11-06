@@ -1,4 +1,4 @@
-/** Dig HD miner illustration (CAVA) — stocky Dig-like, no Dig/GoArbit logos */
+/** Dig HD miner (CAVA) — silueta delgada; hacha visible */
 
 import type { RankId } from '../game/ranks'
 
@@ -80,13 +80,14 @@ const AXE: Record<number, { head: string; gem: string }> = {
 
 type Props = { rank: RankId; axeId?: number; omitAxe?: boolean; className?: string }
 
+/** Vista 160×200; cuerpo estrecho (~0.72 del ancho stocky anterior) */
 export function DigMinerArt({ rank, axeId = 1, omitAxe = false, className = '' }: Props) {
   const p = PAL[rank]
   const a = AXE[Math.min(6, Math.max(1, axeId))]
   const lamp = p.lamp !== 'none'
 
   return (
-    <svg className={`dig-miner-art ${className}`} viewBox="0 0 160 200" width="100%" height="100%" aria-hidden>
+    <svg className={`dig-miner-art thin ${className}`} viewBox="0 0 160 200" width="100%" height="100%" aria-hidden>
       <defs>
         <linearGradient id={`mbody-${rank}`} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor={p.shirt} />
@@ -102,7 +103,7 @@ export function DigMinerArt({ rank, axeId = 1, omitAxe = false, className = '' }
           <stop offset="100%" stopColor={lamp ? p.lamp : '#888'} stopOpacity="0.15" />
         </radialGradient>
         <filter id={`mg-${rank}`} x="-50%" y="-50%" width="200%" height="200%">
-          <feGaussianBlur stdDeviation="2.4" result="b" />
+          <feGaussianBlur stdDeviation="2.2" result="b" />
           <feMerge>
             <feMergeNode in="b" />
             <feMergeNode in="SourceGraphic" />
@@ -110,72 +111,81 @@ export function DigMinerArt({ rank, axeId = 1, omitAxe = false, className = '' }
         </filter>
       </defs>
 
-      {/* pedestal hint for cards */}
-      <ellipse cx="80" cy="188" rx="46" ry="8" fill="#2a241c" opacity="0.55" />
+      <ellipse cx="80" cy="188" rx="34" ry="7" fill="#2a241c" opacity="0.5" />
 
       {p.cape && (
         <>
-          <path d="M42 78 Q18 110 30 170 Q80 150 130 170 Q142 110 118 78 Z" fill={p.cape} stroke="#000" strokeWidth="1.2" />
-          {p.fur && <path d="M44 76 Q80 88 116 76 Q100 68 80 70 Q60 68 44 76" fill={p.fur} stroke="#000" strokeWidth="1" />}
+          <path
+            d="M54 76 Q36 108 42 168 Q80 152 118 168 Q124 108 106 76 Z"
+            fill={p.cape}
+            stroke="#000"
+            strokeWidth="1.1"
+            opacity="0.92"
+          />
+          {p.fur && (
+            <path d="M56 74 Q80 84 104 74 Q94 68 80 69 Q66 68 56 74" fill={p.fur} stroke="#000" strokeWidth="1" />
+          )}
         </>
       )}
 
-      {/* legs stocky */}
-      <rect x="54" y="138" width="20" height="36" rx="5" fill={p.pants} stroke="#000" strokeWidth="1.4" />
-      <rect x="86" y="138" width="20" height="36" rx="5" fill={p.pants} stroke="#000" strokeWidth="1.4" />
-      <rect x="50" y="168" width="26" height="12" rx="3" fill="#1a1208" stroke="#000" strokeWidth="1" />
-      <rect x="84" y="168" width="26" height="12" rx="3" fill="#1a1208" stroke="#000" strokeWidth="1" />
+      {/* legs — thin */}
+      <rect x="64" y="136" width="12" height="38" rx="4" fill={p.pants} stroke="#000" strokeWidth="1.3" />
+      <rect x="84" y="136" width="12" height="38" rx="4" fill={p.pants} stroke="#000" strokeWidth="1.3" />
+      <rect x="60" y="168" width="18" height="10" rx="2.5" fill="#1a1208" stroke="#000" strokeWidth="1" />
+      <rect x="82" y="168" width="18" height="10" rx="2.5" fill="#1a1208" stroke="#000" strokeWidth="1" />
 
-      {/* torso */}
+      {/* torso — narrow */}
       <path
-        d="M44 78 Q80 66 116 78 L122 140 Q80 156 38 140 Z"
+        d="M58 74 Q80 64 102 74 L106 136 Q80 148 54 136 Z"
         fill={`url(#mbody-${rank})`}
         stroke="#000"
-        strokeWidth="1.6"
+        strokeWidth="1.5"
       />
       {rank >= 3 && (
         <>
-          <path d="M40 82 L58 78 L62 102 L38 104 Z" fill={p.metal} stroke="#000" strokeWidth="1.1" />
-          <path d="M120 82 L102 78 L98 102 L122 104 Z" fill={p.metal} stroke="#000" strokeWidth="1.1" />
+          <path d="M54 78 L66 74 L68 96 L52 98 Z" fill={p.metal} stroke="#000" strokeWidth="1" />
+          <path d="M106 78 L94 74 L92 96 L108 98 Z" fill={p.metal} stroke="#000" strokeWidth="1" />
         </>
       )}
       {rank >= 5 && (
-        <circle cx="80" cy="110" r="8" fill={p.accent} filter={`url(#mg-${rank})`} stroke="#000" strokeWidth="1" />
+        <circle cx="80" cy="108" r="6" fill={p.accent} filter={`url(#mg-${rank})`} stroke="#000" strokeWidth="1" />
       )}
 
-      {/* arms */}
-      <rect x="28" y="84" width="18" height="40" rx="7" fill={`url(#mbody-${rank})`} stroke="#000" strokeWidth="1.3" />
-      <rect x="114" y="84" width="18" height="40" rx="7" fill={`url(#mbody-${rank})`} stroke="#000" strokeWidth="1.3" />
-      <ellipse cx="37" cy="128" rx="9" ry="8" fill="#d4a574" stroke="#000" strokeWidth="1.1" />
-      <ellipse cx="123" cy="128" rx="9" ry="8" fill="#d4a574" stroke="#000" strokeWidth="1.1" />
+      {/* arms — slim */}
+      <rect x="44" y="80" width="12" height="42" rx="5" fill={`url(#mbody-${rank})`} stroke="#000" strokeWidth="1.2" />
+      <rect x="104" y="80" width="12" height="42" rx="5" fill={`url(#mbody-${rank})`} stroke="#000" strokeWidth="1.2" />
+      <ellipse cx="50" cy="126" rx="6.5" ry="6" fill="#d4a574" stroke="#000" strokeWidth="1" />
+      <ellipse cx="110" cy="126" rx="6.5" ry="6" fill="#d4a574" stroke="#000" strokeWidth="1" />
 
-      {/* head + beard */}
-      <ellipse cx="80" cy="52" rx="24" ry="26" fill="#e8b888" stroke="#000" strokeWidth="1.5" />
-      <path d="M58 58 Q80 78 102 58 Q96 72 80 76 Q64 72 58 58" fill="#8b5a2b" stroke="#000" strokeWidth="1" />
-      <ellipse cx="70" cy="50" rx="3" ry="4" fill="#1a1208" />
-      <ellipse cx="90" cy="50" rx="3" ry="4" fill="#1a1208" />
-      <path d="M74 60 Q80 64 86 60" fill="none" stroke="#c88848" strokeWidth="1.6" />
+      {/* head — less wide */}
+      <ellipse cx="80" cy="50" rx="17" ry="22" fill="#e8b888" stroke="#000" strokeWidth="1.4" />
+      <path d="M66 56 Q80 72 94 56 Q90 66 80 70 Q70 66 66 56" fill="#8b5a2b" stroke="#000" strokeWidth="1" />
+      <ellipse cx="73" cy="48" rx="2.2" ry="3.2" fill="#1a1208" />
+      <ellipse cx="87" cy="48" rx="2.2" ry="3.2" fill="#1a1208" />
+      <path d="M76 58 Q80 61 84 58" fill="none" stroke="#c88848" strokeWidth="1.4" />
 
       {/* hard hat */}
-      <path d="M54 42 Q80 18 106 42 L104 52 Q80 60 56 52 Z" fill={`url(#mhelm-${rank})`} stroke="#000" strokeWidth="1.5" />
-      <ellipse cx="80" cy="42" rx="28" ry="6" fill={p.helm} stroke="#000" strokeWidth="1" opacity="0.85" />
+      <path d="M62 40 Q80 20 98 40 L96 50 Q80 56 64 50 Z" fill={`url(#mhelm-${rank})`} stroke="#000" strokeWidth="1.4" />
+      <ellipse cx="80" cy="40" rx="20" ry="5" fill={p.helm} stroke="#000" strokeWidth="1" opacity="0.85" />
       {lamp && (
         <g filter={`url(#mg-${rank})`}>
-          <circle cx="80" cy="28" r="9" fill={`url(#mlamp-${rank})`} stroke="#000" strokeWidth="1.2" />
+          <circle cx="80" cy="28" r="7" fill={`url(#mlamp-${rank})`} stroke="#000" strokeWidth="1.1" />
         </g>
       )}
       {rank === 6 && (
-        <path d="M58 30 L64 14 L72 28 L80 10 L88 28 L96 14 L102 30 Z" fill={p.metal} stroke="#000" strokeWidth="1.1" />
+        <path d="M64 30 L69 16 L75 28 L80 12 L85 28 L91 16 L96 30 Z" fill={p.metal} stroke="#000" strokeWidth="1" />
       )}
-      {rank === 2 && <path d="M56 58 Q80 70 104 58" fill="none" stroke={p.accent} strokeWidth="5" strokeLinecap="round" />}
+      {rank === 2 && (
+        <path d="M64 56 Q80 66 96 56" fill="none" stroke={p.accent} strokeWidth="4" strokeLinecap="round" />
+      )}
 
-      {/* pick over shoulder — always on cards */}
+      {/* pick over shoulder */}
       {!omitAxe && (
-        <g transform="translate(108,70) rotate(-48)" filter={axeId >= 4 ? `url(#mg-${rank})` : undefined}>
-          <rect x="10" y="14" width="7" height="58" rx="2" fill="#6b4423" stroke="#000" strokeWidth="1.2" />
-          <path d="M-6 10 L18 -6 L34 10 L18 26 Z" fill={a.head} stroke="#000" strokeWidth="1.4" />
-          <path d="M34 10 L58 -4 L72 10 L58 24 Z" fill={a.head} stroke="#000" strokeWidth="1.4" />
-          <circle cx="34" cy="10" r="6" fill={a.gem} stroke="#000" strokeWidth="1" />
+        <g transform="translate(102,66) rotate(-48)" filter={axeId >= 4 ? `url(#mg-${rank})` : undefined}>
+          <rect x="10" y="12" width="6" height="52" rx="2" fill="#6b4423" stroke="#000" strokeWidth="1.1" />
+          <path d="M-4 8 L16 -6 L30 8 L16 22 Z" fill={a.head} stroke="#000" strokeWidth="1.3" />
+          <path d="M30 8 L50 -4 L62 8 L50 20 Z" fill={a.head} stroke="#000" strokeWidth="1.3" />
+          <circle cx="30" cy="8" r="5" fill={a.gem} stroke="#000" strokeWidth="1" />
         </g>
       )}
     </svg>
