@@ -1,45 +1,84 @@
 /**
- * NOWPayments USDT — client hooks listos para API real.
- * DEMO hasta que existan secrets (NOWPAYMENTS_API_KEY en server).
- *
- * Flujo real:
- * 1) POST /api/payments/usdt/create  { productId, amountUsdt, orderId }
- * 2) Server usa NOWPAYMENTS_API_KEY → api.nowpayments.io/v1/payment
- * 3) IPN webhook con NOWPAYMENTS_IPN_SECRET → grant ítem
+ * NOWPayments USDT — client hooks.
+ * DEMO hasta que el server tenga secrets (config.ready) o VITE_PAYMENTS_MODE=nowpayments.
  */
 
 import type { CreatePaymentRequest, CreatePaymentResponse, PaymentsMode } from './paymentsApi'
 
-export const NOWPAYMENTS_API_BASE = 'https://api.nowpayments.io/v1'
 export const NOWPAYMENTS_CREATE_PATH = '/api/payments/usdt/create'
 export const NOWPAYMENTS_STATUS_PATH = '/api/payments/usdt/status'
+export const NOWPAYMENTS_CONFIG_PATH = '/api/payments/usdt/config'
 
 export type NowPaymentsCreateBody = CreatePaymentRequest & {
   payCurrency?: 'usdttrc20' | 'usdterc20' | 'usdtmatic'
 }
 
-function clientMode(): PaymentsMode {
+function apiBase(): string {
+  return ((import.meta.env.VITE_PAYMENTS_API_BASE as string | undefined) || '').replace(/\/$/, '')
+}
+
+function url(path: string): string {
+  return `${apiBase()}${path}`
+}
+
+function bakedMode(): PaymentsMode {
   const raw = (import.meta.env.VITE_PAYMENTS_MODE as string | undefined) || 'demo'
   if (raw === 'nowpayments' || raw === 'stripe_crypto') return raw
   return 'demo'
 }
 
-/** True si el front cree que hay pasarela (solo señal; secrets van en server) */
-export function nowPaymentsConfiguredClient(): boolean {
-  return clientMode() === 'nowpayments' && Boolean(import.meta.env.VITE_PAYMENTS_API_BASE)
+let cachedReady: boolean | null = null
+let readyFetchedAt = 0
+
+/** Consulta si el host tiene keys (sin filtrar secrets) */
+export async function fetchPaymentsConfig(): Promise<{ ready: boolean; mode: PaymentsMode }> {
+  const now = Date.now()
+  if (cachedReady != null && now - readyFetchedAt < 60_000) {
+    return { ready: cachedReady, mode: cachedReady ? 'nowpayments' : bakedMode() }
+  }
+  try {
+    const res = await fetch(url(NOWPAYMENTS_CONFIG_PATH), { cache: 'no-store' })
+    if (!res.ok) {
+      cachedReady = false
+      readyFetchedAt = now
+      return { ready: false, mode: bakedMode() }
+    }
+    const data = (await res.json()) as { ready?: boolean; mode?: string }
+    cachedReady = Boolean(data.ready)
+    readyFetchedAt = now
+    return {
+      ready: cachedReady,
+      mode: cachedReady ? 'nowpayments' : bakedMode(),
+    }
+  } catch {
+    cachedReady = false
+    readyFetchedAt = now
+    return { ready: false, mode: bakedMode() }
+  }
 }
 
-/**
- * Crea invoice USDT vía API route del host.
- * Sin secrets en browser. Si falla / no hay route → ok:false (UI queda en DEMO).
- */
+/** Live si VITE_MODE=nowpayments O el server reporta keys listas */
+export async function resolveLivePaymentsMode(): Promise<PaymentsMode> {
+  if (bakedMode() === 'nowpayments') {
+    const cfg = await fetchPaymentsConfig()
+    // Mode pedido pero sin keys → DEMO fallback
+    return cfg.ready ? 'nowpayments' : 'demo'
+  }
+  if (bakedMode() === 'stripe_crypto') return 'stripe_crypto'
+  // VITE demo: auto-flip si secrets bound en host
+  const cfg = await fetchPaymentsConfig()
+  return cfg.ready ? 'nowpayments' : 'demo'
+}
+
+export function nowPaymentsConfiguredClient(): boolean {
+  return bakedMode() === 'nowpayments' || cachedReady === true
+}
+
 export async function createNowPaymentsInvoice(
   req: NowPaymentsCreateBody,
 ): Promise<CreatePaymentResponse> {
-  const base = (import.meta.env.VITE_PAYMENTS_API_BASE as string | undefined) || ''
-  const url = `${base.replace(/\/$/, '')}${NOWPAYMENTS_CREATE_PATH}`
   try {
-    const res = await fetch(url, {
+    const res = await fetch(url(NOWPAYMENTS_CREATE_PATH), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -47,18 +86,19 @@ export async function createNowPaymentsInvoice(
         payCurrency: req.payCurrency ?? 'usdttrc20',
       }),
     })
-    if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as Partial<CreatePaymentResponse> & {
+      pay_address?: string
+      pay_amount?: number
+      payment_id?: string
+      message?: string
+    }
+    if (!res.ok || data.ok === false) {
       return {
         ok: false,
         mode: 'nowpayments',
         paymentId: '',
-        message: `NOWPayments API ${res.status} — revisa keys / route (docs/usdt-pagos.md)`,
+        message: data.message || `NOWPayments API ${res.status} — DEMO fallback`,
       }
-    }
-    const data = (await res.json()) as Partial<CreatePaymentResponse> & {
-      pay_address?: string
-      pay_amount?: number
-      payment_id?: string
     }
     return {
       ok: true,
@@ -80,13 +120,14 @@ export async function createNowPaymentsInvoice(
 }
 
 export async function pollNowPaymentsStatus(paymentId: string): Promise<'pending' | 'paid' | 'failed'> {
-  const base = (import.meta.env.VITE_PAYMENTS_API_BASE as string | undefined) || ''
   try {
     const res = await fetch(
-      `${base.replace(/\/$/, '')}${NOWPAYMENTS_STATUS_PATH}?id=${encodeURIComponent(paymentId)}`,
+      `${url(NOWPAYMENTS_STATUS_PATH)}?id=${encodeURIComponent(paymentId)}`,
+      { cache: 'no-store' },
     )
     if (!res.ok) return 'pending'
-    const data = (await res.json()) as { status?: string }
+    const data = (await res.json()) as { status?: string; paid?: boolean }
+    if (data.paid) return 'paid'
     const s = (data.status || '').toLowerCase()
     if (s === 'finished' || s === 'confirmed' || s === 'paid') return 'paid'
     if (s === 'failed' || s === 'expired' || s === 'refunded') return 'failed'
@@ -95,21 +136,3 @@ export async function pollNowPaymentsStatus(paymentId: string): Promise<'pending
     return 'pending'
   }
 }
-
-/** Plantilla server (comentada) — copiar a host serverless */
-export const NOWPAYMENTS_SERVER_STUB = `
-// POST /api/payments/usdt/create
-// const key = process.env.NOWPAYMENTS_API_KEY
-// const r = await fetch('https://api.nowpayments.io/v1/payment', {
-//   method: 'POST',
-//   headers: { 'x-api-key': key, 'Content-Type': 'application/json' },
-//   body: JSON.stringify({
-//     price_amount: body.amountUsdt,
-//     price_currency: 'usd',
-//     pay_currency: 'usdttrc20',
-//     order_id: body.orderId,
-//     order_description: body.productId,
-//     ipn_callback_url: process.env.NOWPAYMENTS_IPN_URL,
-//   }),
-// })
-`

@@ -49,7 +49,13 @@ import { yourRank, weeklyBoard } from './game/ranking'
 import { SEASON, SEASON_TRACK, SKINS, type SkinId } from './game/season'
 import { STRIPE_PRODUCTS, type StripeProductId } from './game/stripeMock'
 import { OPERATOR_GIFTS, isOperatorSession } from './game/gifts'
-import { createUsdtPayment, isPaymentsDemo, readPaymentsMode } from './game/paymentsApi'
+import {
+  createUsdtPayment,
+  getUsdtPaymentStatus,
+  markPaymentGranted,
+  resolvePaymentsLive,
+  wasPaymentGranted,
+} from './game/paymentsApi'
 import {
   createUsdtInvoice,
   formatUsdt,
@@ -123,6 +129,8 @@ export default function App() {
   const [mute, setMute] = useState(() => loadMutePref())
   const [music, setMusic] = useState(false)
   const [usdtBusy, setUsdtBusy] = useState(false)
+  const [usdtLive, setUsdtLive] = useState(false)
+  const [usdtPoll, setUsdtPoll] = useState<'idle' | 'pending' | 'paid' | 'failed'>('idle')
   const [giftOpen, setGiftOpen] = useState(false)
   const [giftOpened, setGiftOpened] = useState(false)
 
@@ -133,33 +141,84 @@ export default function App() {
     }
   }, [g.operatorGiftsClaimed])
 
+  useEffect(() => {
+    let cancelled = false
+    void resolvePaymentsLive().then((r) => {
+      if (!cancelled) setUsdtLive(!r.demo && r.ready)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const grantUsdtInvoice = (inv: UsdtInvoice) => {
+    const pid = inv.paymentId || inv.id
+    if (wasPaymentGranted(pid)) return
+    markPaymentGranted(pid)
+    if (inv.kind === 'energy') g.buyEnergy(inv.productId as EnergyPackId, 'usd')
+    else if (inv.kind === 'box') {
+      g.buyBox(inv.productId as BoxId, 'usd')
+      setNav('shop')
+    }
+  }
+
+  const openUsdtCheckout = async (draft: UsdtInvoice) => {
+    setUsdtBusy(true)
+    setUsdtPoll('idle')
+    setModal({ type: 'usdt', invoice: draft })
+    try {
+      const pay = await createUsdtPayment({
+        productId: draft.productId,
+        amountUsdt: draft.amountUsdt,
+        orderId: draft.id,
+      })
+      const live = pay.mode === 'nowpayments' && pay.ok && Boolean(pay.paymentId) && !pay.paymentId.startsWith('demo_')
+      const next: UsdtInvoice = {
+        ...draft,
+        paymentId: pay.paymentId,
+        address: pay.payAddress || draft.address,
+        amountUsdt: pay.payAmount ?? draft.amountUsdt,
+        checkoutUrl: pay.checkoutUrl,
+        live,
+        message: pay.message,
+        status: live ? 'awaiting' : 'awaiting',
+        gatewayPath: live ? `/api/payments/usdt/status?id=${pay.paymentId}` : draft.gatewayPath,
+      }
+      setUsdtLive(live)
+      setModal({ type: 'usdt', invoice: next })
+      if (live) setUsdtPoll('pending')
+    } finally {
+      setUsdtBusy(false)
+    }
+  }
+
   const openUsdtEnergy = (id: EnergyPackId) => {
     const pack = ENERGY_PACKS.find((p) => p.id === id)!
-    setModal({
-      type: 'usdt',
-      invoice: createUsdtInvoice({
+    void openUsdtCheckout(
+      createUsdtInvoice({
         kind: 'energy',
         productId: id,
         label: `⚡ Pack ${pack.name}`,
         amountUsd: pack.priceUsd,
       }),
-    })
+    )
   }
   const openUsdtBox = (id: BoxId) => {
     const box = BOXES.find((b) => b.id === id)!
-    setModal({
-      type: 'usdt',
-      invoice: createUsdtInvoice({
+    void openUsdtCheckout(
+      createUsdtInvoice({
         kind: 'box',
         productId: id,
         label: box.name,
         amountUsd: box.priceUsd,
       }),
-    })
+    )
   }
 
+  /** DEMO only — live mode grants via status poll / IPN */
   const confirmUsdtDemo = async () => {
     if (!modal || modal.type !== 'usdt' || usdtBusy) return
+    if (modal.invoice.live) return
     setUsdtBusy(true)
     const inv = modal.invoice
     try {
@@ -168,16 +227,35 @@ export default function App() {
         amountUsdt: inv.amountUsdt,
         orderId: inv.id,
       })
-      if (inv.kind === 'energy') g.buyEnergy(inv.productId as EnergyPackId, 'usd')
-      else if (inv.kind === 'box') {
-        g.buyBox(inv.productId as BoxId, 'usd')
-        setNav('shop')
-      }
+      grantUsdtInvoice(inv)
       setModal(null)
     } finally {
       setUsdtBusy(false)
     }
   }
+
+  // Poll NOWPayments status while live invoice open
+  useEffect(() => {
+    if (!modal || modal.type !== 'usdt' || !modal.invoice.live || !modal.invoice.paymentId) return
+    const paymentId = modal.invoice.paymentId
+    let stopped = false
+    const tick = async () => {
+      const st = await getUsdtPaymentStatus(paymentId)
+      if (stopped) return
+      setUsdtPoll(st)
+      if (st === 'paid') {
+        grantUsdtInvoice(modal.invoice)
+        setModal(null)
+      }
+    }
+    void tick()
+    const id = window.setInterval(() => void tick(), 4000)
+    return () => {
+      stopped = true
+      window.clearInterval(id)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- grant closes modal
+  }, [modal])
   const board = useMemo(
     () => weeklyBoard(g.weekMined || g.minedTotal, g.crew.length, PLAYER),
     [g.weekMined, g.minedTotal, g.crew.length],
@@ -231,7 +309,7 @@ export default function App() {
         <span className="demo-badge">DEMO</span>
         <em>
           Sin crypto real · sin NFT on-chain · sin wallets · retiros ficticios · marca CAVA
-          {isPaymentsDemo() ? ' · USDT DEMO' : ` · pagos ${readPaymentsMode()}`}
+          {usdtLive ? ' · USDT NOWPayments' : ' · USDT DEMO'}
         </em>
       </div>
 
@@ -540,21 +618,25 @@ export default function App() {
                 {nav === 'pay' && (
                   <div className="feature-card pay-stage" id="stripe-panel">
                     <h2>
-                      USDT · NOWPayments <span className="demo-pill">{isPaymentsDemo() ? 'DEMO' : readPaymentsMode()}</span>
+                      USDT · NOWPayments{' '}
+                      <span className="demo-pill">{usdtLive ? 'LIVE' : 'DEMO'}</span>
                     </h2>
                     <p>
-                      Hooks listos · secrets en server · ver <code>docs/usdt-pagos.md</code> +{' '}
-                      <code>.env.example</code>. Hasta keys → DEMO.
+                      Checkout real cuando hay secrets en el host. IPN:{' '}
+                      <code>/api/payments/usdt/ipn</code>. Ver <code>docs/usdt-pagos.md</code>.
                     </p>
                     <ul className="pay-keys">
                       <li>
-                        <code>VITE_PAYMENTS_MODE</code> = demo | nowpayments
+                        Auto: keys bound → LIVE (aunque <code>VITE_PAYMENTS_MODE=demo</code>)
                       </li>
                       <li>
-                        <code>NOWPAYMENTS_API_KEY</code> + <code>NOWPAYMENTS_IPN_SECRET</code> (server)
+                        Secrets: <code>NOWPAYMENTS_API_KEY</code> + <code>NOWPAYMENTS_IPN_SECRET</code>
                       </li>
                       <li>
-                        Routes: <code>/api/payments/usdt/create</code> · status · ipn
+                        Routes: create · status · ipn · config
+                      </li>
+                      <li>
+                        Estado: {usdtLive ? 'listo para cobros USDT TRC20' : 'DEMO hasta secrets'}
                       </li>
                     </ul>
                     <div className="stripe-grid">
@@ -1157,39 +1239,72 @@ export default function App() {
               )}
               {modal.type === 'usdt' && (
                 <>
-                  <h3 id="usdt-pay-title">Pagar con USDT</h3>
+                  <h3 id="usdt-pay-title">
+                    Pagar con USDT {modal.invoice.live ? '' : '· DEMO'}
+                  </h3>
                   <p>
                     {modal.invoice.label} · <strong>{formatUsdt(modal.invoice.amountUsdt)}</strong>
                   </p>
                   <p className="pay-demo-note">
-                    DEMO · sin on-chain · sin retiros BTC · ítems de juego solamente
+                    {modal.invoice.live
+                      ? 'NOWPayments · USDT TRC20 · ítems de juego · sin retiros BTC'
+                      : 'DEMO · sin on-chain · sin retiros BTC · ítems de juego solamente'}
                   </p>
                   <div className="usdt-invoice" id="usdt-invoice">
                     <div>
                       Red <b>{modal.invoice.network}</b>
+                      {modal.invoice.live && usdtPoll !== 'idle' ? ` · ${usdtPoll}` : ''}
                     </div>
-                    <div className="usdt-addr" title="Dirección mock DEMO">
-                      {modal.invoice.address}
+                    <div
+                      className="usdt-addr"
+                      title={modal.invoice.live ? 'Dirección NOWPayments' : 'Dirección mock DEMO'}
+                    >
+                      {usdtBusy && !modal.invoice.paymentId
+                        ? 'Creando invoice…'
+                        : modal.invoice.address}
                     </div>
                     <button
                       type="button"
                       className="btn btn-ghost btn-wide"
+                      disabled={!modal.invoice.address}
                       onClick={() => void navigator.clipboard?.writeText(modal.invoice.address)}
                     >
-                      Copiar dirección DEMO
+                      {modal.invoice.live ? 'Copiar dirección USDT' : 'Copiar dirección DEMO'}
                     </button>
+                    {modal.invoice.checkoutUrl && (
+                      <a
+                        className="btn btn-primary btn-wide"
+                        href={modal.invoice.checkoutUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{ marginTop: 8, display: 'inline-block', textAlign: 'center' }}
+                      >
+                        Abrir checkout NOWPayments
+                      </a>
+                    )}
                     <code className="usdt-path">{modal.invoice.gatewayPath}</code>
+                    {modal.invoice.message && <p className="pay-demo-note">{modal.invoice.message}</p>}
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 10 }}>
-                    <button
-                      type="button"
-                      className="btn btn-primary btn-usdt"
-                      id="confirm-usdt-demo"
-                      disabled={usdtBusy}
-                      onClick={() => void confirmUsdtDemo()}
-                    >
-                      {usdtBusy ? 'Confirmando…' : 'Ya pagué · entregar ítem'}
-                    </button>
+                    {modal.invoice.live ? (
+                      <button type="button" className="btn btn-primary btn-usdt" id="usdt-wait-paid" disabled>
+                        {usdtPoll === 'paid'
+                          ? 'Pagado · entregando…'
+                          : usdtPoll === 'failed'
+                            ? 'Pago fallido'
+                            : 'Esperando pago…'}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-usdt"
+                        id="confirm-usdt-demo"
+                        disabled={usdtBusy}
+                        onClick={() => void confirmUsdtDemo()}
+                      >
+                        {usdtBusy ? 'Confirmando…' : 'Ya pagué · entregar ítem'}
+                      </button>
+                    )}
                     <button type="button" className="btn btn-ghost" onClick={() => setModal(null)}>
                       Cancelar
                     </button>
