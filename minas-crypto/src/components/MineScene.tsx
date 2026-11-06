@@ -133,7 +133,7 @@ export function MineScene({
                 <i style={{ width: `${(energy / maxE) * 100}%` }} />
               </div>
               <div
-                className="mf-body"
+                className={`mf-body ${a.phase === 'walk' ? 'is-walk' : ''} ${a.phase === 'mine' ? 'is-mine' : ''}`}
                 style={{
                   transform: `scaleX(${a.facing})`,
                   ['--skin-tint' as string]: tint,
@@ -142,23 +142,21 @@ export function MineScene({
                 <MinerSprite
                   miner={miner}
                   size="scene"
-                  digging={false}
+                  digging={a.phase === 'mine' && !tired}
                   hideCaption
                   axeId={axeId}
                   omitAxe
                 />
-              </div>
-              {!tired && (
+                {/* Hacha SIEMPRE visible (también cansado) */}
                 <div
-                  className={`mf-pick ${a.phase === 'mine' ? 'swing' : 'carry'}`}
-                  style={{ transform: a.facing === -1 ? 'scaleX(-1)' : undefined }}
+                  className={`mf-pick ${tired ? 'tired' : ''} ${a.phase === 'mine' && !tired ? 'swing' : 'carry'} ${a.phase === 'walk' && !tired ? 'walk-sway' : ''}`}
                   aria-hidden
                 >
                   <span className="mf-pick-pivot">
                     <AxeSprite axeId={axeId} size="held" />
                   </span>
                 </div>
-              )}
+              </div>
               {tired && <span className="mf-zzz">zzz</span>}
               {a.phase === 'walk' && !tired && <span className="mf-dust" />}
               {a.phase === 'mine' && !tired && <span className="mf-hit-spark" />}

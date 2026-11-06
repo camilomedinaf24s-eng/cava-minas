@@ -395,7 +395,7 @@ button:disabled {
   will-change: left, top, transform;
 }
 .mf-agent .miner-sprite.size-scene {
-  width: 64px;
+  width: 72px;
 }
 .mf-energy {
   position: absolute;
@@ -793,56 +793,54 @@ button:disabled {
 .mf-agent .ms-level-tag {
   display: none;
 }
-.mf-agent.phase-walk .miner-sprite .ms-dig,
-.mf-agent.phase-walk .miner-sprite .dig-miner-art {
-  animation: walkBob 0.28s steps(2, end) infinite;
+.mf-body.is-walk .dig-miner-art {
+  animation: walkBob 0.36s ease-in-out infinite;
 }
 .mf-body {
   display: block;
-  width: 56px;
+  position: relative;
+  width: 72px;
   transform-origin: 50% 100%;
 }
 .mf-pick {
   position: absolute;
-  left: 54%;
-  top: 26%;
-  width: 32px;
-  height: 32px;
-  z-index: 6;
+  right: -6%;
+  top: 18%;
+  width: 48px;
+  height: 56px;
+  z-index: 8;
   pointer-events: none;
 }
-.mf-agent.face-l .mf-pick {
-  left: auto;
-  right: 54%;
+.mf-pick.tired {
+  opacity: 0.85;
+  filter: grayscale(0.35);
 }
 .mf-pick-pivot {
   display: block;
-  width: 32px;
-  height: 32px;
-  transform-origin: 18% 88%;
+  width: 48px;
+  height: 56px;
+  transform-origin: 22% 86%;
 }
 .mf-pick .axe-px.size-held {
-  width: 32px !important;
-  min-width: 32px !important;
-  max-width: 32px !important;
-  height: auto !important;
+  width: 48px !important;
+  min-width: 48px !important;
+  max-width: 48px !important;
+  height: 56px !important;
   display: block;
-  image-rendering: pixelated;
-}
-.mf-pick,
-.mf-pick-pivot {
-  width: 32px;
-  height: 40px;
+  image-rendering: auto;
+  filter: drop-shadow(2px 2px 0 #000);
 }
 .mf-pick.carry .mf-pick-pivot {
-  transform: rotate(-35deg);
+  transform: rotate(-42deg);
+}
+.mf-pick.walk-sway .mf-pick-pivot {
+  animation: axeWalkSway 0.45s ease-in-out infinite;
 }
 .mf-pick.swing .mf-pick-pivot {
-  animation: axeSwingOk 0.4s steps(3, end) infinite;
+  animation: axeSwingOk 0.42s ease-in-out infinite;
 }
-.mf-agent.phase-mine .miner-sprite .ms-dig,
-.mf-agent.phase-mine .miner-sprite .dig-miner-art {
-  animation: digLean 0.38s steps(2, end) infinite;
+.mf-body.is-mine .dig-miner-art {
+  animation: digLean 0.42s ease-in-out infinite;
 }
 .mf-hit-spark {
   position: absolute;
@@ -898,18 +896,24 @@ button:disabled {
   z-index: 3;
 }
 @keyframes walkBob {
-  50% { transform: translateY(2px); }
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(4px); }
 }
-/* Arco corto: el pico se queda al lado exterior (no cruza el torso) */
+@keyframes axeWalkSway {
+  0%, 100% { transform: rotate(-38deg); }
+  50% { transform: rotate(-28deg); }
+}
+/* Swing Dig-like: alza y golpea */
 @keyframes axeSwingOk {
-  0% { transform: rotate(-40deg); }
-  45% { transform: rotate(18deg); }
-  60% { transform: rotate(22deg); }
-  100% { transform: rotate(-40deg); }
+  0% { transform: rotate(-55deg); }
+  35% { transform: rotate(28deg); }
+  50% { transform: rotate(32deg); }
+  100% { transform: rotate(-55deg); }
 }
 @keyframes digLean {
-  0%, 100% { transform: translate(0, 0); }
-  50% { transform: translate(1px, 2px); }
+  0%, 100% { transform: translate(0, 0) rotate(0deg); }
+  40% { transform: translate(2px, 3px) rotate(4deg); }
+  55% { transform: translate(3px, 4px) rotate(6deg); }
 }
 @keyframes sparkHit {
   0%, 100% { opacity: 0; transform: scale(0.4); }
@@ -1747,7 +1751,11 @@ button:disabled {
   margin: 0 auto;
 }
 .axe-px.size-held {
-  image-rendering: pixelated;
+  image-rendering: auto;
+}
+.axe-px.size-held .dig-axe-art {
+  width: 100%;
+  height: 100%;
 }
 .axe-attrs {
   grid-template-columns: repeat(4, 1fr) !important;
