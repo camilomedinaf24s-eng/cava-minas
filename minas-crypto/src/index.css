@@ -76,10 +76,8 @@ button:disabled {
   font-size: 10px;
   z-index: 20;
 }
-.demo-banner strong {
-  color: var(--amber);
-  font-size: 12px;
-  letter-spacing: 0.12em;
+.demo-banner .demo-badge {
+  flex-shrink: 0;
 }
 .demo-banner em {
   font-style: normal;
@@ -337,8 +335,9 @@ button:disabled {
 .mf-body {
   filter: drop-shadow(0 0 0 var(--skin-tint, transparent));
 }
-.mf-agent .mf-body .ms-px {
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--skin-tint, transparent) 55%, transparent);
+.mf-agent .mf-body .ms-dig,
+.mf-agent .mf-body .dig-miner-art {
+  filter: drop-shadow(0 0 2px color-mix(in srgb, var(--skin-tint, transparent) 70%, transparent));
 }
 .mf-block.empty .mf-px,
 .mf-block.respawn .mf-px {
@@ -396,7 +395,7 @@ button:disabled {
   will-change: left, top, transform;
 }
 .mf-agent .miner-sprite.size-scene {
-  width: 56px;
+  width: 64px;
 }
 .mf-energy {
   position: absolute;
@@ -466,30 +465,45 @@ button:disabled {
   border-color: #ffe27a;
 }
 .energy-bolt {
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   display: grid;
   place-items: center;
-  font-size: 18px;
-  line-height: 1;
+  position: relative;
+  overflow: hidden;
+  box-sizing: border-box;
   background: #121416;
   border: 3px solid #000;
   color: #ffe27a;
-  text-shadow: 0 0 8px #4ad2ff;
 }
-.energy-bolt .bolts {
-  letter-spacing: -2px;
-  white-space: nowrap;
+.energy-bolt .bolt-icon {
+  font-size: 20px;
+  line-height: 1;
+  filter: drop-shadow(0 0 4px #4ad2ff);
+}
+.energy-bolt .bolt-count {
+  position: absolute;
+  right: 2px;
+  bottom: 1px;
+  font-family: var(--font-pixel);
+  font-size: 7px;
+  color: #ffe27a;
+  background: #000;
+  border: 1px solid #333;
+  padding: 1px 3px;
+  line-height: 1.2;
 }
 .energy-card.tier-medium .energy-bolt {
-  font-size: 16px;
   color: #7ec8ff;
-  text-shadow: 0 0 8px #3d7cff;
+}
+.energy-card.tier-medium .bolt-icon {
+  filter: drop-shadow(0 0 4px #3d7cff);
 }
 .energy-card.tier-large .energy-bolt {
-  font-size: 13px;
   color: #ffe27a;
-  text-shadow: 0 0 10px #ffb347;
+}
+.energy-card.tier-large .bolt-icon {
+  filter: drop-shadow(0 0 5px #ffb347);
 }
 .energy-card h3 {
   margin: 0 0 4px;
@@ -542,20 +556,35 @@ button:disabled {
 }
 .demo-badge,
 .demo-pill {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   font-family: var(--font-pixel);
   font-size: 8px;
-  padding: 3px 6px;
+  font-weight: 400;
+  font-style: normal;
+  letter-spacing: 0;
+  line-height: 1;
+  padding: 4px 8px;
   background: #4ad2ff;
   color: #0a0c0e;
   border: 2px solid #000;
-  margin-left: 6px;
-  vertical-align: middle;
+  text-shadow: none;
+  -webkit-font-smoothing: none;
+  box-shadow: none;
 }
 .demo-banner .demo-badge {
-  margin-left: 0;
-  margin-right: 8px;
+  margin: 0 4px 0 0;
   background: #ffe27a;
+}
+.brand-block .brand-demo {
+  display: flex;
+  width: fit-content;
+  margin: 8px auto 0;
+}
+.brand-block .logo {
+  display: block;
+  text-align: center;
 }
 .feature-stage {
   padding: 16px;
@@ -764,7 +793,8 @@ button:disabled {
 .mf-agent .ms-level-tag {
   display: none;
 }
-.mf-agent.phase-walk .miner-sprite .ms-px {
+.mf-agent.phase-walk .miner-sprite .ms-dig,
+.mf-agent.phase-walk .miner-sprite .dig-miner-art {
   animation: walkBob 0.28s steps(2, end) infinite;
 }
 .mf-body {
@@ -810,7 +840,8 @@ button:disabled {
 .mf-pick.swing .mf-pick-pivot {
   animation: axeSwingOk 0.4s steps(3, end) infinite;
 }
-.mf-agent.phase-mine .miner-sprite .ms-px {
+.mf-agent.phase-mine .miner-sprite .ms-dig,
+.mf-agent.phase-mine .miner-sprite .dig-miner-art {
   animation: digLean 0.38s steps(2, end) infinite;
 }
 .mf-hit-spark {
@@ -1391,19 +1422,16 @@ button:disabled {
 .miner-sprite {
   position: relative;
   transform-origin: 50% 100%;
-  image-rendering: pixelated;
-  image-rendering: crisp-edges;
 }
-.miner-sprite .ms-px {
+.miner-sprite.dig-hd .ms-dig,
+.miner-sprite .dig-miner-art {
   display: block;
   width: 100%;
   height: auto;
-  image-rendering: pixelated;
-  image-rendering: crisp-edges;
-  filter: drop-shadow(4px 4px 0 #000);
+  filter: drop-shadow(3px 4px 0 #000);
 }
 .miner-sprite.size-card {
-  width: 120px;
+  width: 128px;
   margin: 0 auto;
 }
 .miner-sprite.size-stage {
@@ -1447,7 +1475,8 @@ button:disabled {
   padding: 3px 6px;
   border: 2px solid #000;
 }
-.miner-sprite.is-digging .ms-px {
+.miner-sprite.is-digging .ms-dig,
+.miner-sprite.is-digging .dig-miner-art {
   animation: dig 0.55s steps(2, end) infinite;
 }
 @keyframes dig {
@@ -1701,19 +1730,24 @@ button:disabled {
   min-height: 96px;
 }
 .axe-px {
-  image-rendering: pixelated;
-  image-rendering: crisp-edges;
   display: block;
   filter: drop-shadow(3px 3px 0 #000);
 }
+.axe-px.dig-hd {
+  image-rendering: auto;
+}
 .axe-px.size-sm {
-  width: 72px;
+  width: 88px;
   height: auto;
   margin: 0 auto;
 }
 .axe-px.size-lg {
-  width: 128px;
+  width: 140px;
   height: auto;
+  margin: 0 auto;
+}
+.axe-px.size-held {
+  image-rendering: pixelated;
 }
 .axe-attrs {
   grid-template-columns: repeat(4, 1fr) !important;

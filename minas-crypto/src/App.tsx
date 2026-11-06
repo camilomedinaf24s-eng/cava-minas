@@ -68,8 +68,9 @@ function EnergyPacksShop({
     <div className="energy-shop energy-packs" id="energy-shop">
       {ENERGY_PACKS.map((pack) => (
         <div key={pack.id} className={`energy-card tier-${pack.tier}`} data-pack={pack.id}>
-          <div className="energy-bolt" aria-hidden>
-            <span className="bolts">{'⚡'.repeat(pack.bolts)}</span>
+          <div className="energy-bolt" aria-hidden data-bolts={pack.bolts}>
+            <span className="bolt-icon">⚡</span>
+            {pack.bolts > 1 && <span className="bolt-count">×{pack.bolts}</span>}
           </div>
           <div>
             <h3>
@@ -217,16 +218,15 @@ export default function App() {
     <div className="desk">
       <div className="demo-banner" role="status">
         <span className="dot" />
-        <strong className="demo-badge">DEMO</strong>
+        <span className="demo-badge">DEMO</span>
         <em>Sin crypto real · sin NFT on-chain · sin wallets · retiros ficticios · marca CAVA</em>
       </div>
 
       <div className="desk-body">
         <aside className="sidebar">
           <div className="brand-block">
-            <div className="logo">
-              {BRAND} <span className="demo-pill">DEMO</span>
-            </div>
+            <div className="logo">{BRAND}</div>
+            <div className="demo-pill brand-demo">DEMO</div>
             <div className="sub">{BRAND_SUB}</div>
             <div className="player">
               Operador

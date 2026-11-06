@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { getAxe } from '../game/axes'
-import { axePixelUrl, heldPickPixelUrl } from './pixelSprites'
+import { heldPickPixelUrl } from './pixelSprites'
+import { DigAxeArt } from './DigAxeArt'
 
 type Props = {
   axeId: number
@@ -8,22 +9,32 @@ type Props = {
   className?: string
 }
 
-/** Pixel-art Dig axe 1–6 (`held` = pico compacto en mano) */
+/** Dig-style axe art 1–6; `held` keeps compact pixel for swing overlay */
 export function AxeSprite({ axeId, size = 'sm', className = '' }: Props) {
   const id = Math.min(6, Math.max(1, Math.floor(axeId)))
   const def = getAxe(id)
-  const src = useMemo(() => {
-    if (size === 'held') return heldPickPixelUrl(id, 5)
-    return axePixelUrl(id, size === 'lg' ? 5 : 3)
-  }, [id, size])
+  const heldSrc = useMemo(() => heldPickPixelUrl(id, 5), [id])
+
+  if (size === 'held') {
+    return (
+      <img
+        className={`axe-px size-held ${className}`}
+        src={heldSrc}
+        alt={def.name}
+        title={`${def.name} · ${def.rarity}`}
+        draggable={false}
+      />
+    )
+  }
 
   return (
-    <img
-      className={`axe-px size-${size} ${className}`}
-      src={src}
-      alt={def.name}
+    <div
+      className={`axe-px dig-hd size-${size} ${className}`}
       title={`${def.name} · ${def.rarity}`}
-      draggable={false}
-    />
+      role="img"
+      aria-label={def.name}
+    >
+      <DigAxeArt axeId={id} />
+    </div>
   )
 }
