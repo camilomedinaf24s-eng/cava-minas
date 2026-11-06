@@ -1926,11 +1926,12 @@ button:disabled {
   position: relative;
   z-index: 1;
 }
-.gift-gift_elite .gift-body {
-  background: linear-gradient(160deg, #2a3a4a, #121820 70%);
-}
-.gift-gift_mythic .gift-body {
+.gift-gift_mythic_a .gift-body,
+.gift-gift_mythic_b .gift-body {
   background: linear-gradient(160deg, #4a2a3a, #1a1014 70%);
+}
+.gift-gift_mythic_b .gift-lid {
+  background: linear-gradient(180deg, #ffb0d0, #c45a8a);
 }
 .gift-claim {
   animation: gift-pulse 1.4s ease-in-out infinite;

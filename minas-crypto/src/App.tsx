@@ -943,7 +943,7 @@ export default function App() {
               <p className="gift-kicker">Operador · {PLAYER}</p>
               <h3>2 cajas REGALO</h3>
               <p className="gift-lead">
-                Mineros más fuertes + hachas más fuertes · reclamo único al empezar en vivo
+                Ambas Mítico max · minero N6 + hacha 6 · reclamo único al empezar en vivo
               </p>
               <div className={`gift-row ${giftOpened ? 'opened' : ''}`}>
                 {OPERATOR_GIFTS.map((gf, i) => (

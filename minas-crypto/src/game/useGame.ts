@@ -71,7 +71,13 @@ import {
   type BoxId,
   type Miner,
 } from './miners'
-import { OPERATOR_GIFTS, createGiftMiner, isOperatorSession } from './gifts'
+import {
+  OPERATOR_GIFTS,
+  OPERATOR_GIFTS_GEN,
+  createGiftMiner,
+  giftsFullyClaimed,
+  isOperatorSession,
+} from './gifts'
 import { defaultState, emptyDaily, loadState, saveState } from './storage'
 import type { ClaimRecord, GameState } from './types'
 
@@ -1094,12 +1100,12 @@ export function useGame() {
     let ok = false
     setState((s) => {
       const cur = accrue(s, Date.now())
-      if (cur.operatorGiftsClaimed) {
+      if (giftsFullyClaimed(cur.operatorGiftsClaimed, cur.operatorGiftsGen ?? 0)) {
         flash('Regalos ya reclamados')
         return cur
       }
       const t = Date.now()
-      const gifted = OPERATOR_GIFTS.map((gf, i) => createGiftMiner(gf.minerRank, t + i * 17))
+      const gifted = OPERATOR_GIFTS.map((gf, i) => createGiftMiner(gf.minerRank, t + i * 17, i))
       const axeIds = OPERATOR_GIFTS.map((gf) => gf.axeId)
       const ownedAxes = [...new Set([...(cur.ownedAxes ?? [1]), ...axeIds])].sort((a, b) => a - b)
       const room = Math.max(0, MAX_MINERS - cur.miners.length)
@@ -1121,18 +1127,19 @@ export function useGame() {
         deployedMinerIds: deployed,
         activeMinerId: gifted[gifted.length - 1]?.id ?? cur.activeMinerId,
         ownedAxes,
-        equippedAxeId: Math.max(...ownedAxes),
+        equippedAxeId: 6,
         operatorGiftsClaimed: true,
+        operatorGiftsGen: OPERATOR_GIFTS_GEN,
         history: pushHistory(cur, {
           id: uid(),
           at: t,
           amount: 0,
           kind: 'gift',
-          note: '2 cajas REGALO · N5+N6 + hachas 5–6 · Andres Medina',
+          note: '2 cajas REGALO · 2× Mítico N6 + hacha 6 · Andres Medina',
         }),
       }
       saveState(next)
-      flash('¡2 cajas REGALO abiertas · Élite + Mítico!')
+      flash('¡2 cajas REGALO · Mítico max ×2!')
       ok = true
       return next
     })
@@ -1156,7 +1163,10 @@ export function useGame() {
     weekMined: live.weekMined ?? 0,
     referral: live.referral,
     season: live.season,
-    operatorGiftsClaimed: live.operatorGiftsClaimed,
+    operatorGiftsClaimed: giftsFullyClaimed(
+      live.operatorGiftsClaimed,
+      live.operatorGiftsGen ?? 0,
+    ),
     floaters,
     agents,
     maxMiners: MAX_MINERS,

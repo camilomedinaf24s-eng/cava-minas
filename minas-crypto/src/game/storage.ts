@@ -1,5 +1,6 @@
 import { dayKey } from './economy'
 import { MAX_ENERGY } from './energy'
+import { giftsFullyClaimed } from './gifts'
 import { createMineField, normalizeMineBlocks } from './mineField'
 import { createStarterMiner, type Miner } from './miners'
 import { makeReferralCode } from './referrals'
@@ -13,7 +14,7 @@ function normalizeMiner(m: Miner): Miner {
   return { ...m, maxEnergy, energy }
 }
 
-const KEY = 'cava-idle-mvp-v8'
+const KEY = 'cava-idle-mvp-v9'
 
 function defaultReferral(now = Date.now()): ReferralState {
   return {
@@ -84,6 +85,7 @@ export function defaultState(now = Date.now()): GameState {
     weekMined: 0,
     weekKey: weekKey(now),
     operatorGiftsClaimed: false,
+    operatorGiftsGen: 0,
   }
 }
 
@@ -91,6 +93,7 @@ export function loadState(): GameState {
   try {
     const raw =
       localStorage.getItem(KEY) ??
+      localStorage.getItem('cava-idle-mvp-v8') ??
       localStorage.getItem('cava-idle-mvp-v7') ??
       localStorage.getItem('cava-idle-mvp-v6') ??
       localStorage.getItem('cava-idle-mvp-v5')
@@ -169,7 +172,12 @@ export function loadState(): GameState {
       season,
       weekMined,
       weekKey: wk,
-      operatorGiftsClaimed: Boolean(parsed.operatorGiftsClaimed),
+      // Gen 2 = ambas míticas: si reclamó gen 1 (Élite+Mítico), re-claim once
+      operatorGiftsGen: Number(parsed.operatorGiftsGen) || 0,
+      operatorGiftsClaimed: giftsFullyClaimed(
+        Boolean(parsed.operatorGiftsClaimed),
+        Number(parsed.operatorGiftsGen) || 0,
+      ),
     }
   } catch {
     return defaultState()

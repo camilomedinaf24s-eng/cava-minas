@@ -99,6 +99,8 @@ export type GameState = {
   /** MINE minado esta semana (ranking) */
   weekMined: number
   weekKey: string
-  /** Regalos operador Andres Medina reclamados una vez */
+  /** Regalos operador Andres Medina reclamados una vez (gen actual) */
   operatorGiftsClaimed: boolean
+  /** Gen de regalos reclamada (2 = ambas míticas N6) */
+  operatorGiftsGen: number
 }
