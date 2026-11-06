@@ -72,11 +72,10 @@ import {
   type Miner,
 } from './miners'
 import {
-  OPERATOR_GIFTS,
-  OPERATOR_GIFTS_GEN,
-  createGiftMiner,
+  applyOperatorGifts,
   giftsFullyClaimed,
   isOperatorSession,
+  sanitizeDeployedIds,
 } from './gifts'
 import { defaultState, emptyDaily, loadState, saveState } from './storage'
 import type { ClaimRecord, GameState } from './types'
@@ -453,7 +452,9 @@ export function useGame() {
       setState((s) => {
         const cur = accrue(s, Date.now())
         if (!cur.miners.some((m) => m.id === id)) return cur
-        const set = new Set(cur.deployedMinerIds ?? [])
+        // Cupo solo con ids válidos (stale post-gift bloqueaba Desplegar)
+        const clean = sanitizeDeployedIds(cur.deployedMinerIds, cur.miners)
+        const set = new Set(clean)
         if (set.has(id)) {
           if (set.size <= 1) {
             flash('Deja al menos 1 minero en mina')
@@ -467,7 +468,11 @@ export function useGame() {
           }
           set.add(id)
         }
-        const next = { ...cur, deployedMinerIds: [...set].slice(0, MAX_MINERS), activeMinerId: id }
+        const next = {
+          ...cur,
+          deployedMinerIds: sanitizeDeployedIds([...set], cur.miners),
+          activeMinerId: id,
+        }
         saveState(next)
         flash(set.has(id) ? 'Minero a la mina' : 'Minero retirado')
         return next
@@ -1101,45 +1106,48 @@ export function useGame() {
     setState((s) => {
       const cur = accrue(s, Date.now())
       if (giftsFullyClaimed(cur.operatorGiftsClaimed, cur.operatorGiftsGen ?? 0)) {
-        flash('Regalos ya reclamados')
-        return cur
+        // Re-aplica si claim quedó a medias / sin cores 150 / sin deploy
+        const repaired = applyOperatorGifts(cur, Date.now())
+        const sameRoster =
+          repaired.miners.length === cur.miners.length &&
+          repaired.miners.every((m, i) => m.id === cur.miners[i]?.id && m.coreAttrs?.fuerza === 150)
+        if (
+          sameRoster &&
+          repaired.deployedMinerIds.join() === sanitizeDeployedIds(cur.deployedMinerIds, cur.miners).join() &&
+          (cur.ownedAxes ?? []).includes(6)
+        ) {
+          flash('Regalos ya reclamados')
+          return cur
+        }
+        const next = {
+          ...repaired,
+          history: pushHistory(cur, {
+            id: uid(),
+            at: Date.now(),
+            amount: 0,
+            kind: 'gift',
+            note: 'Repair REGALO · 2× Mítico 150 + hacha 6',
+          }),
+        }
+        saveState(next)
+        flash('Regalos reparados · Mítico 150 ×2 en mina')
+        ok = true
+        return next
       }
       const t = Date.now()
-      const gifted = OPERATOR_GIFTS.map((gf, i) => createGiftMiner(gf.minerRank, t + i * 17, i))
-      const axeIds = OPERATOR_GIFTS.map((gf) => gf.axeId)
-      const ownedAxes = [...new Set([...(cur.ownedAxes ?? [1]), ...axeIds])].sort((a, b) => a - b)
-      const room = Math.max(0, MAX_MINERS - cur.miners.length)
-      let miners = [...cur.miners]
-      if (room < gifted.length) {
-        const need = gifted.length - room
-        const sorted = [...miners].sort((a, b) => a.level - b.level || a.createdAt - b.createdAt)
-        const drop = new Set(sorted.slice(0, need).map((m) => m.id))
-        miners = miners.filter((m) => !drop.has(m.id))
-      }
-      miners = [...miners, ...gifted].slice(0, MAX_MINERS)
-      const deployed = [...new Set([...(cur.deployedMinerIds ?? []), ...gifted.map((m) => m.id)])].slice(
-        0,
-        MAX_MINERS,
-      )
+      const granted = applyOperatorGifts(cur, t)
       const next: GameState = {
-        ...cur,
-        miners,
-        deployedMinerIds: deployed,
-        activeMinerId: gifted[gifted.length - 1]?.id ?? cur.activeMinerId,
-        ownedAxes,
-        equippedAxeId: 6,
-        operatorGiftsClaimed: true,
-        operatorGiftsGen: OPERATOR_GIFTS_GEN,
+        ...granted,
         history: pushHistory(cur, {
           id: uid(),
           at: t,
           amount: 0,
           kind: 'gift',
-          note: '2 cajas REGALO · 2× Mítico N6 + hacha 6 · Andres Medina',
+          note: '2 cajas REGALO · 2× Mítico 150 F/R/P + hacha 6 · Andres Medina',
         }),
       }
       saveState(next)
-      flash('¡2 cajas REGALO · Mítico max ×2!')
+      flash('¡2 cajas REGALO · Mítico 150 ×2!')
       ok = true
       return next
     })

@@ -46,6 +46,24 @@ export type Miner = {
   /** Estamina 0..maxEnergy — al 0 está cansado */
   energy: number
   maxEnergy: number
+  /** Override F/R/P finales (regalos operador = 150) — sin multi de skills de attr */
+  coreAttrs?: { fuerza: number; resistencia: number; productividad: number }
+  /** Marcador persistente de caja REGALO operador */
+  operatorGift?: boolean
+}
+
+/** Cores Dig de regalos Mítico (claramente > N6 base ~100 / ~112 con skills) */
+export const GIFT_CORE_ATTRS = {
+  fuerza: 150,
+  resistencia: 150,
+  productividad: 150,
+} as const
+
+export function isOperatorGiftMiner(m: Pick<Miner, 'name' | 'operatorGift' | 'coreAttrs'>): boolean {
+  if (m.operatorGift) return true
+  if (m.coreAttrs && m.coreAttrs.fuerza >= 150) return true
+  const n = m.name || ''
+  return /^Andres ·/i.test(n) || /^Minero Mítico/i.test(n)
 }
 
 export type BoxId = 'common' | 'rare' | 'legendary'
@@ -242,6 +260,22 @@ export function createStarterMiner(now = Date.now()): Miner {
 }
 
 export function displayAttrs(m: Miner) {
+  // Regalos operador: siempre 150/150/150 (también si falta coreAttrs en save viejo)
+  if (isOperatorGiftMiner(m)) {
+    const c = m.coreAttrs
+    return {
+      fuerza: c?.fuerza ?? GIFT_CORE_ATTRS.fuerza,
+      resistencia: c?.resistencia ?? GIFT_CORE_ATTRS.resistencia,
+      productividad: c?.productividad ?? GIFT_CORE_ATTRS.productividad,
+    }
+  }
+  if (m.coreAttrs) {
+    return {
+      fuerza: m.coreAttrs.fuerza,
+      resistencia: m.coreAttrs.resistencia,
+      productividad: m.coreAttrs.productividad,
+    }
+  }
   const base = getRank(m.level).attrs
   let f = base.fuerza
   let r = base.resistencia

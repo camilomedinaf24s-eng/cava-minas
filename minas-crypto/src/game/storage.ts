@@ -1,6 +1,12 @@
 import { dayKey } from './economy'
 import { MAX_ENERGY } from './energy'
-import { giftsFullyClaimed } from './gifts'
+import {
+  applyOperatorGifts,
+  ensureGiftsDeployable,
+  giftsFullyClaimed,
+  needsOperatorGiftRepair,
+  sanitizeDeployedIds,
+} from './gifts'
 import { createMineField, normalizeMineBlocks } from './mineField'
 import { createStarterMiner, type Miner } from './miners'
 import { makeReferralCode } from './referrals'
@@ -14,7 +20,7 @@ function normalizeMiner(m: Miner): Miner {
   return { ...m, maxEnergy, energy }
 }
 
-const KEY = 'cava-idle-mvp-v9'
+const KEY = 'cava-idle-mvp-v10'
 
 function defaultReferral(now = Date.now()): ReferralState {
   return {
@@ -93,6 +99,7 @@ export function loadState(): GameState {
   try {
     const raw =
       localStorage.getItem(KEY) ??
+      localStorage.getItem('cava-idle-mvp-v9') ??
       localStorage.getItem('cava-idle-mvp-v8') ??
       localStorage.getItem('cava-idle-mvp-v7') ??
       localStorage.getItem('cava-idle-mvp-v6') ??
@@ -110,11 +117,10 @@ export function loadState(): GameState {
       parsed.activeMinerId && miners.some((m) => m.id === parsed.activeMinerId)
         ? parsed.activeMinerId
         : miners[0]?.id ?? null
-    const deployedMinerIds = (
-      Array.isArray(parsed.deployedMinerIds) && parsed.deployedMinerIds.length > 0
-        ? parsed.deployedMinerIds.filter((id) => miners.some((m) => m.id === id))
-        : miners.map((m) => m.id)
-    ).slice(0, 10)
+    const deployedMinerIds = sanitizeDeployedIds(
+      Array.isArray(parsed.deployedMinerIds) ? parsed.deployedMinerIds : undefined,
+      miners,
+    )
     const ownedAxes =
       Array.isArray(parsed.ownedAxes) && parsed.ownedAxes.length > 0
         ? [...new Set(parsed.ownedAxes.map(Number))].filter((n) => n >= 1 && n <= 6)
@@ -149,7 +155,7 @@ export function loadState(): GameState {
       claimedFree: Array.isArray(seasonRaw?.claimedFree) ? seasonRaw!.claimedFree : [],
       claimedPremium: Array.isArray(seasonRaw?.claimedPremium) ? seasonRaw!.claimedPremium : [],
     }
-    return {
+    let state: GameState = {
       ...base,
       ...parsed,
       levels: {
@@ -172,13 +178,21 @@ export function loadState(): GameState {
       season,
       weekMined,
       weekKey: wk,
-      // Gen 2 = ambas míticas: si reclamó gen 1 (Élite+Mítico), re-claim once
       operatorGiftsGen: Number(parsed.operatorGiftsGen) || 0,
-      operatorGiftsClaimed: giftsFullyClaimed(
-        Boolean(parsed.operatorGiftsClaimed),
-        Number(parsed.operatorGiftsGen) || 0,
-      ),
+      operatorGiftsClaimed: Boolean(parsed.operatorGiftsClaimed),
     }
+
+    // Si ya reclamó (gen≥2): siempre re-stamp 150 + nombre Mítico + deploy limpio (sin wipe)
+    if (state.operatorGiftsClaimed || (state.operatorGiftsGen ?? 0) >= 2 || needsOperatorGiftRepair(state)) {
+      state = applyOperatorGifts(state, now)
+    } else {
+      state = ensureGiftsDeployable(state)
+      state = {
+        ...state,
+        operatorGiftsClaimed: giftsFullyClaimed(state.operatorGiftsClaimed, state.operatorGiftsGen ?? 0),
+      }
+    }
+    return state
   } catch {
     return defaultState()
   }

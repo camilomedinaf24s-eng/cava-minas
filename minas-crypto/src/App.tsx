@@ -943,7 +943,7 @@ export default function App() {
               <p className="gift-kicker">Operador · {PLAYER}</p>
               <h3>2 cajas REGALO</h3>
               <p className="gift-lead">
-                Ambas Mítico max · minero N6 + hacha 6 · reclamo único al empezar en vivo
+                Ambas Minero Mítico · F/R/P 150 + hacha 6 · reclamo único al empezar en vivo
               </p>
               <div className={`gift-row ${giftOpened ? 'opened' : ''}`}>
                 {OPERATOR_GIFTS.map((gf, i) => (
@@ -1224,23 +1224,25 @@ function MinerRow({
   const rank = getRank(miner.level)
   const attrs = displayAttrs(miner)
   const cost = upgradeMinerCost(miner.level)
+  const rarityLabel = miner.operatorGift || miner.rarity === 'super_legendary' ? 'Mítico' : rank.rarity
   return (
     <div
       className={`dig-card ${active ? 'is-active' : ''} ${deployed ? 'is-deployed' : ''}`}
       style={{ borderColor: rank.color, background: rank.cardBg }}
+      data-gift={miner.operatorGift ? '1' : undefined}
     >
       <span className="dig-badge">NIVEL {miner.level}</span>
       <MinerSprite
-        key={`${miner.id}-rank${miner.level}-axe${axeId}`}
+        key={`${miner.id}-rank${miner.level}-axe${axeId}-f${attrs.fuerza}`}
         miner={miner}
         size="card"
         hideCaption
         axeId={axeId}
       />
       <div className="dig-meta">
-        <h3>{rank.name}</h3>
+        <h3>{miner.name}</h3>
         <span className="dig-rarity" style={{ color: rank.color, borderColor: rank.color }}>
-          {rank.rarity}
+          {rarityLabel}
           {deployed ? ' · EN MINA' : ''}
         </span>
         <div className="dig-attrs">
