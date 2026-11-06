@@ -19,6 +19,7 @@ export type ClaimRecord = {
     | 'energy'
     | 'referral'
     | 'season'
+    | 'gift'
   note?: string
 }
 
@@ -98,4 +99,6 @@ export type GameState = {
   /** MINE minado esta semana (ranking) */
   weekMined: number
   weekKey: string
+  /** Regalos operador Andres Medina reclamados una vez */
+  operatorGiftsClaimed: boolean
 }

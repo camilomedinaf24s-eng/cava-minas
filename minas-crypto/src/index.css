@@ -1792,3 +1792,189 @@ button:disabled {
   background: #d4a017;
   color: #1a1200;
 }
+
+/* ========== GIFTS + POLISH ========== */
+.desk {
+  background:
+    radial-gradient(ellipse at 18% 12%, rgba(255, 210, 74, 0.07), transparent 42%),
+    radial-gradient(ellipse at 82% 8%, rgba(74, 210, 255, 0.06), transparent 40%),
+    radial-gradient(ellipse at 50% 100%, rgba(61, 155, 74, 0.1), transparent 48%),
+    linear-gradient(180deg, #161b20, #0b0d10 42%);
+}
+
+.gift-chip {
+  margin-top: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  font-family: var(--font-pixel);
+  font-size: 9px;
+  color: #1a1200;
+  background: linear-gradient(180deg, #ffe08a, #d4a017);
+  border: 3px solid #000;
+  box-shadow: 3px 3px 0 #000;
+  animation: gift-pulse 1.6s ease-in-out infinite;
+}
+@keyframes gift-pulse {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-2px);
+  }
+}
+
+.gift-backdrop {
+  background: rgba(6, 8, 10, 0.82);
+  backdrop-filter: blur(2px);
+}
+.gift-modal {
+  width: min(640px, 100%);
+  background:
+    radial-gradient(ellipse at 50% 0%, rgba(255, 210, 74, 0.16), transparent 55%),
+    linear-gradient(180deg, #2a2218, #16120e);
+  border-color: #d4a017;
+  box-shadow:
+    0 0 0 2px #000,
+    10px 10px 0 #000;
+}
+.gift-kicker {
+  margin: 0 0 6px !important;
+  font-family: var(--font-pixel);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  color: var(--cyan) !important;
+}
+.gift-lead {
+  max-width: 420px;
+  margin: 0 auto 16px !important;
+  color: #e8dcc8 !important;
+}
+.gift-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin: 8px 0 18px;
+}
+.gift-box {
+  position: relative;
+  text-align: left;
+}
+.gift-lid {
+  height: 14px;
+  margin: 0 8px;
+  border: 3px solid #000;
+  border-bottom: none;
+  background: linear-gradient(180deg, #ffd86b, #c48912);
+  transform-origin: bottom center;
+  transition: transform 0.45s ease;
+}
+.gift-row.opened .gift-lid {
+  transform: rotateX(-70deg) translateY(-6px);
+  opacity: 0.85;
+}
+.gift-body {
+  position: relative;
+  padding: 16px 14px 14px;
+  min-height: 132px;
+  background: linear-gradient(160deg, #3a2a18, #1c140e 70%);
+  border: 4px solid #000;
+  overflow: hidden;
+}
+.gift-ribbon {
+  position: absolute;
+  inset: 0 auto 0 46%;
+  width: 14px;
+  background: #c0392b;
+  border-left: 2px solid #000;
+  border-right: 2px solid #000;
+  pointer-events: none;
+}
+.gift-ribbon::before {
+  content: '';
+  position: absolute;
+  top: 38%;
+  left: -18px;
+  width: 50px;
+  height: 14px;
+  background: #c0392b;
+  border: 2px solid #000;
+}
+.gift-body strong {
+  display: block;
+  font-family: var(--font-pixel);
+  font-size: 11px;
+  color: var(--amber);
+  margin-bottom: 8px;
+  position: relative;
+  z-index: 1;
+}
+.gift-body em {
+  display: block;
+  font-style: normal;
+  font-size: 17px;
+  color: #f0e6d6;
+  position: relative;
+  z-index: 1;
+}
+.gift-body small {
+  display: block;
+  margin-top: 10px;
+  font-family: var(--font-pixel);
+  font-size: 8px;
+  color: var(--cyan);
+  position: relative;
+  z-index: 1;
+}
+.gift-gift_elite .gift-body {
+  background: linear-gradient(160deg, #2a3a4a, #121820 70%);
+}
+.gift-gift_mythic .gift-body {
+  background: linear-gradient(160deg, #4a2a3a, #1a1014 70%);
+}
+.gift-claim {
+  animation: gift-pulse 1.4s ease-in-out infinite;
+}
+
+.pay-keys {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+  text-align: left;
+}
+.pay-keys li {
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 3px solid #000;
+  font-size: 16px;
+  color: #d6c5b0;
+}
+.pay-keys code {
+  color: var(--amber);
+  font-size: 14px;
+}
+.pay-stage .feature-card,
+.pay-stage {
+  background:
+    radial-gradient(ellipse at 100% 0%, rgba(74, 210, 255, 0.08), transparent 45%),
+    var(--panel);
+}
+
+.modal {
+  background:
+    radial-gradient(ellipse at 50% 0%, rgba(255, 210, 74, 0.08), transparent 50%),
+    #1c1812;
+}
+.toast {
+  box-shadow:
+    4px 4px 0 var(--amber),
+    0 0 24px rgba(255, 210, 74, 0.15);
+}
+
+@media (max-width: 720px) {
+  .gift-row {
+    grid-template-columns: 1fr;
+  }
+}

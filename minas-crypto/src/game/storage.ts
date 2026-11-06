@@ -13,7 +13,7 @@ function normalizeMiner(m: Miner): Miner {
   return { ...m, maxEnergy, energy }
 }
 
-const KEY = 'cava-idle-mvp-v7'
+const KEY = 'cava-idle-mvp-v8'
 
 function defaultReferral(now = Date.now()): ReferralState {
   return {
@@ -83,6 +83,7 @@ export function defaultState(now = Date.now()): GameState {
     season: defaultSeason(),
     weekMined: 0,
     weekKey: weekKey(now),
+    operatorGiftsClaimed: false,
   }
 }
 
@@ -90,6 +91,7 @@ export function loadState(): GameState {
   try {
     const raw =
       localStorage.getItem(KEY) ??
+      localStorage.getItem('cava-idle-mvp-v7') ??
       localStorage.getItem('cava-idle-mvp-v6') ??
       localStorage.getItem('cava-idle-mvp-v5')
     if (!raw) return defaultState()
@@ -167,6 +169,7 @@ export function loadState(): GameState {
       season,
       weekMined,
       weekKey: wk,
+      operatorGiftsClaimed: Boolean(parsed.operatorGiftsClaimed),
     }
   } catch {
     return defaultState()

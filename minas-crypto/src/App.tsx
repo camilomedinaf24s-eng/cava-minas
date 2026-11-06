@@ -48,7 +48,8 @@ import { BLOCK_META, LAYER_META, MAX_MINERS } from './game/mineField'
 import { yourRank, weeklyBoard } from './game/ranking'
 import { SEASON, SEASON_TRACK, SKINS, type SkinId } from './game/season'
 import { STRIPE_PRODUCTS, type StripeProductId } from './game/stripeMock'
-import { createUsdtPayment } from './game/paymentsApi'
+import { OPERATOR_GIFTS, isOperatorSession } from './game/gifts'
+import { createUsdtPayment, isPaymentsDemo, readPaymentsMode } from './game/paymentsApi'
 import {
   createUsdtInvoice,
   formatUsdt,
@@ -122,6 +123,15 @@ export default function App() {
   const [mute, setMute] = useState(() => loadMutePref())
   const [music, setMusic] = useState(false)
   const [usdtBusy, setUsdtBusy] = useState(false)
+  const [giftOpen, setGiftOpen] = useState(false)
+  const [giftOpened, setGiftOpened] = useState(false)
+
+  useEffect(() => {
+    if (!g.operatorGiftsClaimed && isOperatorSession()) {
+      const id = window.setTimeout(() => setGiftOpen(true), 600)
+      return () => window.clearTimeout(id)
+    }
+  }, [g.operatorGiftsClaimed])
 
   const openUsdtEnergy = (id: EnergyPackId) => {
     const pack = ENERGY_PACKS.find((p) => p.id === id)!
@@ -219,7 +229,10 @@ export default function App() {
       <div className="demo-banner" role="status">
         <span className="dot" />
         <span className="demo-badge">DEMO</span>
-        <em>Sin crypto real · sin NFT on-chain · sin wallets · retiros ficticios · marca CAVA</em>
+        <em>
+          Sin crypto real · sin NFT on-chain · sin wallets · retiros ficticios · marca CAVA
+          {isPaymentsDemo() ? ' · USDT DEMO' : ` · pagos ${readPaymentsMode()}`}
+        </em>
       </div>
 
       <div className="desk-body">
@@ -232,6 +245,11 @@ export default function App() {
               Operador
               <strong>{PLAYER}</strong>
             </div>
+            {!g.operatorGiftsClaimed && isOperatorSession() && (
+              <button type="button" className="gift-chip" onClick={() => setGiftOpen(true)}>
+                2 cajas REGALO
+              </button>
+            )}
           </div>
 
           <nav className="side-nav">
@@ -245,7 +263,7 @@ export default function App() {
                 ['rank', 'Ranking'],
                 ['pass', 'Pase'],
                 ['boosts', 'Audio'],
-                ['pay', 'Stripe'],
+                ['pay', 'USDT'],
               ] as const
             ).map(([id, label]) => (
               <button key={id} type="button" className={nav === id ? 'on' : ''} onClick={() => setNav(id)}>
@@ -520,11 +538,25 @@ export default function App() {
                   </div>
                 )}
                 {nav === 'pay' && (
-                  <div className="feature-card" id="stripe-panel">
+                  <div className="feature-card pay-stage" id="stripe-panel">
                     <h2>
-                      Stripe mock <span className="demo-pill">ready path</span>
+                      USDT · NOWPayments <span className="demo-pill">{isPaymentsDemo() ? 'DEMO' : readPaymentsMode()}</span>
                     </h2>
-                    <p>Checkout simulado → mismo grant que IAP. Path listo para Stripe real.</p>
+                    <p>
+                      Hooks listos · secrets en server · ver <code>docs/usdt-pagos.md</code> +{' '}
+                      <code>.env.example</code>. Hasta keys → DEMO.
+                    </p>
+                    <ul className="pay-keys">
+                      <li>
+                        <code>VITE_PAYMENTS_MODE</code> = demo | nowpayments
+                      </li>
+                      <li>
+                        <code>NOWPAYMENTS_API_KEY</code> + <code>NOWPAYMENTS_IPN_SECRET</code> (server)
+                      </li>
+                      <li>
+                        Routes: <code>/api/payments/usdt/create</code> · status · ipn
+                      </li>
+                    </ul>
                     <div className="stripe-grid">
                       {STRIPE_PRODUCTS.map((p) => (
                         <div key={p.id} className="stripe-card" data-stripe={p.id}>
@@ -890,6 +922,73 @@ export default function App() {
         {g.toast && (
           <motion.div className="toast" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
             {g.toast}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {giftOpen && !g.operatorGiftsClaimed && (
+          <motion.div
+            className="modal-backdrop gift-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.div
+              className="modal gift-modal"
+              initial={{ scale: 0.88, y: 18 }}
+              animate={{ scale: 1, y: 0 }}
+              transition={{ type: 'spring', stiffness: 260, damping: 22 }}
+            >
+              <p className="gift-kicker">Operador · {PLAYER}</p>
+              <h3>2 cajas REGALO</h3>
+              <p className="gift-lead">
+                Mineros más fuertes + hachas más fuertes · reclamo único al empezar en vivo
+              </p>
+              <div className={`gift-row ${giftOpened ? 'opened' : ''}`}>
+                {OPERATOR_GIFTS.map((gf, i) => (
+                  <motion.div
+                    key={gf.id}
+                    className={`gift-box gift-${gf.id}`}
+                    initial={{ y: 12, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    transition={{ delay: 0.12 + i * 0.1 }}
+                  >
+                    <div className="gift-lid" />
+                    <div className="gift-body">
+                      <span className="gift-ribbon" />
+                      <strong>{gf.title}</strong>
+                      <em>{gf.blurb}</em>
+                      <small>
+                        Rank {gf.minerRank} · Hacha {gf.axeId}
+                      </small>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+              <button
+                type="button"
+                className="btn btn-primary btn-wide gift-claim"
+                onClick={() => {
+                  setGiftOpened(true)
+                  window.setTimeout(() => {
+                    g.claimOperatorGifts()
+                    setGiftOpen(false)
+                    setNav('miners')
+                  }, 520)
+                }}
+              >
+                Reclamar regalos (una vez)
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost btn-wide"
+                style={{ marginTop: 8 }}
+                onClick={() => setGiftOpen(false)}
+              >
+                Más tarde
+              </button>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>

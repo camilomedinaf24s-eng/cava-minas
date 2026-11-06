@@ -71,6 +71,7 @@ import {
   type BoxId,
   type Miner,
 } from './miners'
+import { OPERATOR_GIFTS, createGiftMiner, isOperatorSession } from './gifts'
 import { defaultState, emptyDaily, loadState, saveState } from './storage'
 import type { ClaimRecord, GameState } from './types'
 
@@ -1085,6 +1086,59 @@ export function useGame() {
     flash('Progreso reiniciado')
   }, [flash])
 
+  const claimOperatorGifts = useCallback(() => {
+    if (!isOperatorSession()) {
+      flash('Regalos solo para operador Andres Medina')
+      return false
+    }
+    let ok = false
+    setState((s) => {
+      const cur = accrue(s, Date.now())
+      if (cur.operatorGiftsClaimed) {
+        flash('Regalos ya reclamados')
+        return cur
+      }
+      const t = Date.now()
+      const gifted = OPERATOR_GIFTS.map((gf, i) => createGiftMiner(gf.minerRank, t + i * 17))
+      const axeIds = OPERATOR_GIFTS.map((gf) => gf.axeId)
+      const ownedAxes = [...new Set([...(cur.ownedAxes ?? [1]), ...axeIds])].sort((a, b) => a - b)
+      const room = Math.max(0, MAX_MINERS - cur.miners.length)
+      let miners = [...cur.miners]
+      if (room < gifted.length) {
+        const need = gifted.length - room
+        const sorted = [...miners].sort((a, b) => a.level - b.level || a.createdAt - b.createdAt)
+        const drop = new Set(sorted.slice(0, need).map((m) => m.id))
+        miners = miners.filter((m) => !drop.has(m.id))
+      }
+      miners = [...miners, ...gifted].slice(0, MAX_MINERS)
+      const deployed = [...new Set([...(cur.deployedMinerIds ?? []), ...gifted.map((m) => m.id)])].slice(
+        0,
+        MAX_MINERS,
+      )
+      const next: GameState = {
+        ...cur,
+        miners,
+        deployedMinerIds: deployed,
+        activeMinerId: gifted[gifted.length - 1]?.id ?? cur.activeMinerId,
+        ownedAxes,
+        equippedAxeId: Math.max(...ownedAxes),
+        operatorGiftsClaimed: true,
+        history: pushHistory(cur, {
+          id: uid(),
+          at: t,
+          amount: 0,
+          kind: 'gift',
+          note: '2 cajas REGALO · N5+N6 + hachas 5–6 · Andres Medina',
+        }),
+      }
+      saveState(next)
+      flash('¡2 cajas REGALO abiertas · Élite + Mítico!')
+      ok = true
+      return next
+    })
+    return ok
+  }, [flash])
+
   const crew = useMemo(() => deployedMiners(live), [live])
 
   return {
@@ -1102,6 +1156,7 @@ export function useGame() {
     weekMined: live.weekMined ?? 0,
     referral: live.referral,
     season: live.season,
+    operatorGiftsClaimed: live.operatorGiftsClaimed,
     floaters,
     agents,
     maxMiners: MAX_MINERS,
@@ -1115,6 +1170,7 @@ export function useGame() {
     claimSeasonTier,
     equipSkin,
     completeStripeMock,
+    claimOperatorGifts,
     seasonTier: seasonTierFromXp(live.season?.xp ?? 0),
     boostLeftMs,
     boost: live.boost,

@@ -1,13 +1,9 @@
 /**
- * Stub pasarela crypto (NOWPayments / Stripe Crypto).
- * En DEMO no llama red real. Con env keys → listo para wire.
- *
- * Env (documentadas en docs/usdt-pagos.md):
- * - VITE_PAYMENTS_MODE = demo | nowpayments | stripe_crypto
- * - VITE_NOWPAYMENTS_API_KEY (solo si hace falta en client; preferir server)
- * - VITE_STRIPE_PUBLISHABLE_KEY
- * Server-only (no bundle): NOWPAYMENTS_API_KEY, STRIPE_SECRET_KEY, USDT_RECEIVE_ADDRESS
+ * Pasarela USDT — DEMO por defecto; NOWPayments cuando VITE_PAYMENTS_MODE=nowpayments.
+ * Secrets solo en server (ver docs/usdt-pagos.md + .env.example).
  */
+
+import { createNowPaymentsInvoice, pollNowPaymentsStatus } from './nowpayments'
 
 export type PaymentsMode = 'demo' | 'nowpayments' | 'stripe_crypto'
 
@@ -34,18 +30,19 @@ function env(name: string): string | undefined {
   return v && String(v).length ? String(v) : undefined
 }
 
-function readMode(): PaymentsMode {
+export function readPaymentsMode(): PaymentsMode {
   const raw = env('VITE_PAYMENTS_MODE') || 'demo'
   if (raw === 'nowpayments' || raw === 'stripe_crypto') return raw
   return 'demo'
 }
 
-/**
- * Crea pago USDT. En demo: respuesta simulada.
- * En nowpayments/stripe_crypto: stub (sin secrets server → mensaje explícito).
- */
+/** True mientras no haya pasarela live configurada */
+export function isPaymentsDemo(): boolean {
+  return readPaymentsMode() === 'demo'
+}
+
 export async function createUsdtPayment(req: CreatePaymentRequest): Promise<CreatePaymentResponse> {
-  const mode = readMode()
+  const mode = readPaymentsMode()
 
   if (mode === 'demo') {
     return {
@@ -59,19 +56,12 @@ export async function createUsdtPayment(req: CreatePaymentRequest): Promise<Crea
   }
 
   if (mode === 'nowpayments') {
-    if (!env('VITE_NOWPAYMENTS_API_KEY')) {
-      return {
-        ok: false,
-        mode,
-        paymentId: '',
-        message: 'Falta key: usar API route server con NOWPAYMENTS_API_KEY (ver usdt-pagos.md)',
-      }
-    }
+    const live = await createNowPaymentsInvoice(req)
+    if (live.ok) return live
+    // Fallback seguro: no cobrar on-chain sin keys
     return {
-      ok: false,
-      mode,
-      paymentId: '',
-      message: 'Stub NOWPayments: cablear fetch server-side (ver docs/usdt-pagos.md)',
+      ...live,
+      message: `${live.message} · UI permanece en DEMO hasta secrets`,
     }
   }
 
@@ -95,17 +85,18 @@ export async function createUsdtPayment(req: CreatePaymentRequest): Promise<Crea
   return { ok: false, mode: 'demo', paymentId: '', message: 'Modo desconocido' }
 }
 
-/** Poll estado — DEMO siempre paid tras confirmación UI */
 export async function getUsdtPaymentStatus(paymentId: string): Promise<'pending' | 'paid' | 'failed'> {
   if (paymentId.startsWith('demo_')) return 'paid'
+  if (readPaymentsMode() === 'nowpayments') return pollNowPaymentsStatus(paymentId)
   return 'pending'
 }
 
 export const PAYMENTS_ENV_KEYS = [
   'VITE_PAYMENTS_MODE',
+  'VITE_PAYMENTS_API_BASE',
   'NOWPAYMENTS_API_KEY',
   'NOWPAYMENTS_IPN_SECRET',
-  'VITE_NOWPAYMENTS_API_KEY',
+  'NOWPAYMENTS_IPN_URL',
   'STRIPE_SECRET_KEY',
   'STRIPE_CRYPTO_WEBHOOK_SECRET',
   'VITE_STRIPE_PUBLISHABLE_KEY',
