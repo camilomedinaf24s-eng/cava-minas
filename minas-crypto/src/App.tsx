@@ -48,10 +48,22 @@ import { BLOCK_META, LAYER_META, MAX_MINERS } from './game/mineField'
 import { yourRank, weeklyBoard } from './game/ranking'
 import { SEASON, SEASON_TRACK, SKINS, type SkinId } from './game/season'
 import { STRIPE_PRODUCTS, type StripeProductId } from './game/stripeMock'
+import { createUsdtPayment } from './game/paymentsApi'
+import {
+  createUsdtInvoice,
+  formatUsdt,
+  type UsdtInvoice,
+} from './game/usdtPay'
 import { useGame } from './game/useGame'
 import './index.css'
 
-function EnergyPacksShop({ onBuyUsd }: { onBuyUsd: (id: EnergyPack['id']) => void }) {
+function EnergyPacksShop({
+  onBuyUsd,
+  onBuyUsdt,
+}: {
+  onBuyUsd: (id: EnergyPack['id']) => void
+  onBuyUsdt: (id: EnergyPack['id']) => void
+}) {
   return (
     <div className="energy-shop energy-packs" id="energy-shop">
       {ENERGY_PACKS.map((pack) => (
@@ -70,9 +82,18 @@ function EnergyPacksShop({ onBuyUsd }: { onBuyUsd: (id: EnergyPack['id']) => voi
               <span>{pack.bolts}× rayo</span>
               <span className="soft-alt">{pack.priceMine} {TOKEN}</span>
             </div>
-            <button type="button" className="btn btn-primary btn-wide" onClick={() => onBuyUsd(pack.id)}>
-              Pagar DEMO {formatUsd(pack.priceUsd)}
-            </button>
+            <div className="pay-row">
+              <button type="button" className="btn btn-ghost btn-wide" onClick={() => onBuyUsd(pack.id)}>
+                DEMO {formatUsd(pack.priceUsd)}
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary btn-wide btn-usdt"
+                onClick={() => onBuyUsdt(pack.id)}
+              >
+                Pagar USDT {formatUsdt(pack.priceUsd)}
+              </button>
+            </div>
           </div>
         </div>
       ))}
@@ -87,6 +108,7 @@ type Modal =
   | { type: 'usd'; kind: 'energy'; id: EnergyPackId }
   | { type: 'usd'; kind: 'box'; id: BoxId }
   | { type: 'stripe'; productId: StripeProductId }
+  | { type: 'usdt'; invoice: UsdtInvoice }
   | null
 
 export default function App() {
@@ -98,6 +120,53 @@ export default function App() {
   const [refCode, setRefCode] = useState('')
   const [mute, setMute] = useState(() => loadMutePref())
   const [music, setMusic] = useState(false)
+  const [usdtBusy, setUsdtBusy] = useState(false)
+
+  const openUsdtEnergy = (id: EnergyPackId) => {
+    const pack = ENERGY_PACKS.find((p) => p.id === id)!
+    setModal({
+      type: 'usdt',
+      invoice: createUsdtInvoice({
+        kind: 'energy',
+        productId: id,
+        label: `⚡ Pack ${pack.name}`,
+        amountUsd: pack.priceUsd,
+      }),
+    })
+  }
+  const openUsdtBox = (id: BoxId) => {
+    const box = BOXES.find((b) => b.id === id)!
+    setModal({
+      type: 'usdt',
+      invoice: createUsdtInvoice({
+        kind: 'box',
+        productId: id,
+        label: box.name,
+        amountUsd: box.priceUsd,
+      }),
+    })
+  }
+
+  const confirmUsdtDemo = async () => {
+    if (!modal || modal.type !== 'usdt' || usdtBusy) return
+    setUsdtBusy(true)
+    const inv = modal.invoice
+    try {
+      await createUsdtPayment({
+        productId: inv.productId,
+        amountUsdt: inv.amountUsdt,
+        orderId: inv.id,
+      })
+      if (inv.kind === 'energy') g.buyEnergy(inv.productId as EnergyPackId, 'usd')
+      else if (inv.kind === 'box') {
+        g.buyBox(inv.productId as BoxId, 'usd')
+        setNav('shop')
+      }
+      setModal(null)
+    } finally {
+      setUsdtBusy(false)
+    }
+  }
   const board = useMemo(
     () => weeklyBoard(g.weekMined || g.minedTotal, g.crew.length, PLAYER),
     [g.weekMined, g.minedTotal, g.crew.length],
@@ -644,11 +713,14 @@ export default function App() {
                 <h2>
                   Energía <span>⚡ USD DEMO</span>
                 </h2>
-                <EnergyPacksShop onBuyUsd={(id) => setModal({ type: 'usd', kind: 'energy', id })} />
+                <EnergyPacksShop
+                  onBuyUsd={(id) => setModal({ type: 'usd', kind: 'energy', id })}
+                  onBuyUsdt={openUsdtEnergy}
+                />
               </div>
               <div className="rail-panel" id="box-shop">
                 <h2>
-                  Box Shop <span>USD · probs Dig</span>
+                  Box Shop <span>USDT · probs Dig</span>
                 </h2>
                 <div className="box-list" id="box-shop-list">
                   {BOXES.map((box) => (
@@ -668,16 +740,26 @@ export default function App() {
                               </i>
                             ))}
                         </div>
-                        <button
-                          type="button"
-                          className="btn btn-primary btn-wide"
-                          disabled={g.miners.length >= MAX_MINERS}
-                          onClick={() => setModal({ type: 'usd', kind: 'box', id: box.id as BoxId })}
-                        >
-                          {g.miners.length >= MAX_MINERS
-                            ? `Máx ${MAX_MINERS}`
-                            : `Pagar DEMO ${formatUsd(box.priceUsd)}`}
-                        </button>
+                        <div className="pay-row">
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-wide"
+                            disabled={g.miners.length >= MAX_MINERS}
+                            onClick={() => setModal({ type: 'usd', kind: 'box', id: box.id as BoxId })}
+                          >
+                            {g.miners.length >= MAX_MINERS ? `Máx ${MAX_MINERS}` : `DEMO ${formatUsd(box.priceUsd)}`}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-primary btn-wide btn-usdt"
+                            disabled={g.miners.length >= MAX_MINERS}
+                            onClick={() => openUsdtBox(box.id as BoxId)}
+                          >
+                            {g.miners.length >= MAX_MINERS
+                              ? `Máx ${MAX_MINERS}`
+                              : `Pagar USDT ${formatUsdt(box.priceUsd)}`}
+                          </button>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -759,7 +841,10 @@ export default function App() {
                 ))}
                 <p className="empty">Raros: {Object.values(BLOCK_META).filter((b) => b.rare).map((b) => b.label).join(', ')}</p>
               </div>
-              <EnergyPacksShop onBuyUsd={(id) => setModal({ type: 'usd', kind: 'energy', id })} />
+              <EnergyPacksShop
+                onBuyUsd={(id) => setModal({ type: 'usd', kind: 'energy', id })}
+                onBuyUsdt={openUsdtEnergy}
+              />
               <div className="boost-grid" id="iap-shop">
                 {AD_REWARDS.map((ad) => {
                   const used = g.state.daily.adsByType[ad.id] ?? 0
@@ -964,6 +1049,47 @@ export default function App() {
                       }}
                     >
                       Pagar mock
+                    </button>
+                    <button type="button" className="btn btn-ghost" onClick={() => setModal(null)}>
+                      Cancelar
+                    </button>
+                  </div>
+                </>
+              )}
+              {modal.type === 'usdt' && (
+                <>
+                  <h3 id="usdt-pay-title">Pagar con USDT</h3>
+                  <p>
+                    {modal.invoice.label} · <strong>{formatUsdt(modal.invoice.amountUsdt)}</strong>
+                  </p>
+                  <p className="pay-demo-note">
+                    DEMO · sin on-chain · sin retiros BTC · ítems de juego solamente
+                  </p>
+                  <div className="usdt-invoice" id="usdt-invoice">
+                    <div>
+                      Red <b>{modal.invoice.network}</b>
+                    </div>
+                    <div className="usdt-addr" title="Dirección mock DEMO">
+                      {modal.invoice.address}
+                    </div>
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-wide"
+                      onClick={() => void navigator.clipboard?.writeText(modal.invoice.address)}
+                    >
+                      Copiar dirección DEMO
+                    </button>
+                    <code className="usdt-path">{modal.invoice.gatewayPath}</code>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 10 }}>
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-usdt"
+                      id="confirm-usdt-demo"
+                      disabled={usdtBusy}
+                      onClick={() => void confirmUsdtDemo()}
+                    >
+                      {usdtBusy ? 'Confirmando…' : 'Ya pagué · entregar ítem'}
                     </button>
                     <button type="button" className="btn btn-ghost" onClick={() => setModal(null)}>
                       Cancelar
