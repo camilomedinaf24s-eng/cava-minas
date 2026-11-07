@@ -1,6 +1,6 @@
 /**
  * NOWPayments USDT — client hooks.
- * DEMO hasta que el server tenga secrets (config.ready) o VITE_PAYMENTS_MODE=nowpayments.
+ * DEMO solo si el server NO tiene keys. Si ready=true, create real (sin grant DEMO).
  */
 
 import type { CreatePaymentRequest, CreatePaymentResponse, PaymentsMode } from './paymentsApi'
@@ -30,48 +30,85 @@ function bakedMode(): PaymentsMode {
 let cachedReady: boolean | null = null
 let readyFetchedAt = 0
 
+function looksLikeJsonResponse(res: Response, text: string): boolean {
+  const ct = (res.headers.get('content-type') || '').toLowerCase()
+  if (ct.includes('application/json')) return true
+  const t = text.trim()
+  return t.startsWith('{') || t.startsWith('[')
+}
+
 /** Consulta si el host tiene keys (sin filtrar secrets) */
-export async function fetchPaymentsConfig(): Promise<{ ready: boolean; mode: PaymentsMode }> {
+export async function fetchPaymentsConfig(): Promise<{
+  ready: boolean
+  mode: PaymentsMode
+  hasApiKey?: boolean
+  hasIpnSecret?: boolean
+  message?: string
+}> {
   const now = Date.now()
-  if (cachedReady != null && now - readyFetchedAt < 60_000) {
-    return { ready: cachedReady, mode: cachedReady ? 'nowpayments' : bakedMode() }
+  if (cachedReady != null && now - readyFetchedAt < 30_000) {
+    return { ready: cachedReady, mode: cachedReady ? 'nowpayments' : 'demo' }
   }
   try {
-    const res = await fetch(url(NOWPAYMENTS_CONFIG_PATH), { cache: 'no-store' })
-    if (!res.ok) {
+    const res = await fetch(url(NOWPAYMENTS_CONFIG_PATH), {
+      cache: 'no-store',
+      credentials: 'same-origin',
+    })
+    const text = await res.text()
+    if (!res.ok || !looksLikeJsonResponse(res, text)) {
+      // HTML gate / SPA fallback → routes not mounted or auth HTML
       cachedReady = false
       readyFetchedAt = now
-      return { ready: false, mode: bakedMode() }
+      return {
+        ready: false,
+        mode: 'demo',
+        message: 'config no-JSON · API route ausente o gate HTML',
+      }
     }
-    const data = (await res.json()) as { ready?: boolean; mode?: string }
+    const data = JSON.parse(text) as {
+      ready?: boolean
+      mode?: string
+      hasApiKey?: boolean
+      hasIpnSecret?: boolean
+      message?: string
+      error?: string
+    }
+    if (data.error === 'sign_in_required') {
+      cachedReady = false
+      readyFetchedAt = now
+      return { ready: false, mode: 'demo', message: 'sign_in_required' }
+    }
     cachedReady = Boolean(data.ready)
     readyFetchedAt = now
     return {
       ready: cachedReady,
-      mode: cachedReady ? 'nowpayments' : bakedMode(),
+      mode: cachedReady ? 'nowpayments' : 'demo',
+      hasApiKey: data.hasApiKey,
+      hasIpnSecret: data.hasIpnSecret,
+      message: data.message,
     }
   } catch {
     cachedReady = false
     readyFetchedAt = now
-    return { ready: false, mode: bakedMode() }
+    return { ready: false, mode: 'demo', message: 'config fetch failed' }
   }
 }
 
-/** Live si VITE_MODE=nowpayments O el server reporta keys listas */
+/** Invalidate cache after failed create so UI can re-check */
+export function bustPaymentsConfigCache(): void {
+  cachedReady = null
+  readyFetchedAt = 0
+}
+
 export async function resolveLivePaymentsMode(): Promise<PaymentsMode> {
-  if (bakedMode() === 'nowpayments') {
-    const cfg = await fetchPaymentsConfig()
-    // Mode pedido pero sin keys → DEMO fallback
-    return cfg.ready ? 'nowpayments' : 'demo'
-  }
-  if (bakedMode() === 'stripe_crypto') return 'stripe_crypto'
-  // VITE demo: auto-flip si secrets bound en host
   const cfg = await fetchPaymentsConfig()
-  return cfg.ready ? 'nowpayments' : 'demo'
+  if (cfg.ready) return 'nowpayments'
+  if (bakedMode() === 'stripe_crypto') return 'stripe_crypto'
+  return 'demo'
 }
 
 export function nowPaymentsConfiguredClient(): boolean {
-  return bakedMode() === 'nowpayments' || cachedReady === true
+  return cachedReady === true
 }
 
 export async function createNowPaymentsInvoice(
@@ -80,30 +117,59 @@ export async function createNowPaymentsInvoice(
   try {
     const res = await fetch(url(NOWPAYMENTS_CREATE_PATH), {
       method: 'POST',
+      credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         ...req,
         payCurrency: req.payCurrency ?? 'usdttrc20',
       }),
     })
-    const data = (await res.json().catch(() => ({}))) as Partial<CreatePaymentResponse> & {
+    const text = await res.text()
+    if (!looksLikeJsonResponse(res, text)) {
+      return {
+        ok: false,
+        mode: 'nowpayments',
+        paymentId: '',
+        message: 'API create devolvió HTML · routes no montadas o sign-in',
+      }
+    }
+    const data = JSON.parse(text) as Partial<CreatePaymentResponse> & {
       pay_address?: string
       pay_amount?: number
       payment_id?: string
       message?: string
+      error?: string
+      ok?: boolean
+    }
+    if (data.error === 'sign_in_required') {
+      return {
+        ok: false,
+        mode: 'nowpayments',
+        paymentId: '',
+        message: 'sign_in_required · abre cava firmado',
+      }
     }
     if (!res.ok || data.ok === false) {
       return {
         ok: false,
         mode: 'nowpayments',
         paymentId: '',
-        message: data.message || `NOWPayments API ${res.status} — DEMO fallback`,
+        message: data.message || `NOWPayments create ${res.status}`,
+      }
+    }
+    const paymentId = String(data.paymentId ?? data.payment_id ?? '')
+    if (!paymentId || paymentId.startsWith('demo_')) {
+      return {
+        ok: false,
+        mode: 'nowpayments',
+        paymentId: '',
+        message: 'Create sin paymentId real',
       }
     }
     return {
       ok: true,
       mode: 'nowpayments',
-      paymentId: String(data.paymentId ?? data.payment_id ?? ''),
+      paymentId,
       payAddress: data.payAddress ?? data.pay_address,
       payAmount: data.payAmount ?? data.pay_amount,
       checkoutUrl: data.checkoutUrl,
@@ -114,7 +180,7 @@ export async function createNowPaymentsInvoice(
       ok: false,
       mode: 'nowpayments',
       paymentId: '',
-      message: 'Sin API route — modo DEMO hasta configurar secrets',
+      message: 'Create fetch failed',
     }
   }
 }
@@ -123,10 +189,11 @@ export async function pollNowPaymentsStatus(paymentId: string): Promise<'pending
   try {
     const res = await fetch(
       `${url(NOWPAYMENTS_STATUS_PATH)}?id=${encodeURIComponent(paymentId)}`,
-      { cache: 'no-store' },
+      { cache: 'no-store', credentials: 'same-origin' },
     )
-    if (!res.ok) return 'pending'
-    const data = (await res.json()) as { status?: string; paid?: boolean }
+    const text = await res.text()
+    if (!res.ok || !looksLikeJsonResponse(res, text)) return 'pending'
+    const data = JSON.parse(text) as { status?: string; paid?: boolean }
     if (data.paid) return 'paid'
     const s = (data.status || '').toLowerCase()
     if (s === 'finished' || s === 'confirmed' || s === 'paid') return 'paid'

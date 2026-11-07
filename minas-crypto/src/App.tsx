@@ -67,12 +67,14 @@ import './index.css'
 function EnergyPacksShop({
   onBuyUsd,
   onBuyUsdt,
+  live,
 }: {
   onBuyUsd: (id: EnergyPack['id']) => void
   onBuyUsdt: (id: EnergyPack['id']) => void
+  live?: boolean
 }) {
   return (
-    <div className="energy-shop energy-packs" id="energy-shop">
+    <div className="energy-shop energy-packs" id="energy-shop" data-pay={live ? 'live' : 'demo'}>
       {ENERGY_PACKS.map((pack) => (
         <div key={pack.id} className={`energy-card tier-${pack.tier}`} data-pack={pack.id}>
           <div className="energy-bolt" aria-hidden data-bolts={pack.bolts}>
@@ -83,6 +85,7 @@ function EnergyPacksShop({
             <h3>
               ⚡ Pack {pack.name}{' '}
               <span className="price-usd">{formatUsd(pack.priceUsd)}</span>
+              {live && <span className="demo-pill" style={{ marginLeft: 8 }}>USDT</span>}
             </h3>
             <p>{pack.blurb}</p>
             <div className="energy-meta">
@@ -91,15 +94,17 @@ function EnergyPacksShop({
               <span className="soft-alt">{pack.priceMine} {TOKEN}</span>
             </div>
             <div className="pay-row">
-              <button type="button" className="btn btn-ghost btn-wide" onClick={() => onBuyUsd(pack.id)}>
-                DEMO {formatUsd(pack.priceUsd)}
-              </button>
+              {!live && (
+                <button type="button" className="btn btn-ghost btn-wide" onClick={() => onBuyUsd(pack.id)}>
+                  DEMO {formatUsd(pack.priceUsd)}
+                </button>
+              )}
               <button
                 type="button"
                 className="btn btn-primary btn-wide btn-usdt"
                 onClick={() => onBuyUsdt(pack.id)}
               >
-                Pagar USDT {formatUsdt(pack.priceUsd)}
+                {live ? `Pagar ${formatUsdt(pack.priceUsd)}` : `Pagar USDT ${formatUsdt(pack.priceUsd)}`}
               </button>
             </div>
           </div>
@@ -165,26 +170,47 @@ export default function App() {
   const openUsdtCheckout = async (draft: UsdtInvoice) => {
     setUsdtBusy(true)
     setUsdtPoll('idle')
-    setModal({ type: 'usdt', invoice: draft })
+    setModal({ type: 'usdt', invoice: { ...draft, message: 'Conectando pasarela…' } })
     try {
       const pay = await createUsdtPayment({
         productId: draft.productId,
         amountUsdt: draft.amountUsdt,
         orderId: draft.id,
       })
-      const live = pay.mode === 'nowpayments' && pay.ok && Boolean(pay.paymentId) && !pay.paymentId.startsWith('demo_')
+      // Live create failed — show error, NEVER offer DEMO grant
+      if (!pay.ok) {
+        setUsdtLive(false)
+        setModal({
+          type: 'usdt',
+          invoice: {
+            ...draft,
+            live: false,
+            paymentId: '',
+            address: '',
+            message: pay.message || 'Checkout USDT no disponible',
+            status: 'expired',
+            gatewayPath: '/api/payments/usdt/config',
+          },
+        })
+        return
+      }
+      const live =
+        pay.mode === 'nowpayments' &&
+        Boolean(pay.paymentId) &&
+        !pay.paymentId.startsWith('demo_') &&
+        Boolean(pay.payAddress || pay.checkoutUrl)
       const next: UsdtInvoice = {
         ...draft,
         paymentId: pay.paymentId,
-        address: pay.payAddress || draft.address,
+        address: pay.payAddress || (live ? '' : draft.address),
         amountUsdt: pay.payAmount ?? draft.amountUsdt,
         checkoutUrl: pay.checkoutUrl,
         live,
         message: pay.message,
-        status: live ? 'awaiting' : 'awaiting',
+        status: 'awaiting',
         gatewayPath: live ? `/api/payments/usdt/status?id=${pay.paymentId}` : draft.gatewayPath,
       }
-      setUsdtLive(live)
+      if (live) setUsdtLive(true)
       setModal({ type: 'usdt', invoice: next })
       if (live) setUsdtPoll('pending')
     } finally {
@@ -825,9 +851,10 @@ export default function App() {
             <>
               <div className="rail-panel" id="energy-shop-rail">
                 <h2>
-                  Energía <span>⚡ USD DEMO</span>
+                  Energía <span>{usdtLive ? '⚡ USDT LIVE' : '⚡ USD DEMO'}</span>
                 </h2>
                 <EnergyPacksShop
+                  live={usdtLive}
                   onBuyUsd={(id) => setModal({ type: 'usd', kind: 'energy', id })}
                   onBuyUsdt={openUsdtEnergy}
                 />
@@ -855,14 +882,16 @@ export default function App() {
                             ))}
                         </div>
                         <div className="pay-row">
-                          <button
-                            type="button"
-                            className="btn btn-ghost btn-wide"
-                            disabled={g.miners.length >= MAX_MINERS}
-                            onClick={() => setModal({ type: 'usd', kind: 'box', id: box.id as BoxId })}
-                          >
-                            {g.miners.length >= MAX_MINERS ? `Máx ${MAX_MINERS}` : `DEMO ${formatUsd(box.priceUsd)}`}
-                          </button>
+                          {!usdtLive && (
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-wide"
+                              disabled={g.miners.length >= MAX_MINERS}
+                              onClick={() => setModal({ type: 'usd', kind: 'box', id: box.id as BoxId })}
+                            >
+                              {g.miners.length >= MAX_MINERS ? `Máx ${MAX_MINERS}` : `DEMO ${formatUsd(box.priceUsd)}`}
+                            </button>
+                          )}
                           <button
                             type="button"
                             className="btn btn-primary btn-wide btn-usdt"
@@ -871,7 +900,9 @@ export default function App() {
                           >
                             {g.miners.length >= MAX_MINERS
                               ? `Máx ${MAX_MINERS}`
-                              : `Pagar USDT ${formatUsdt(box.priceUsd)}`}
+                              : usdtLive
+                                ? `Pagar ${formatUsdt(box.priceUsd)}`
+                                : `Pagar USDT ${formatUsdt(box.priceUsd)}`}
                           </button>
                         </div>
                       </div>
@@ -956,6 +987,7 @@ export default function App() {
                 <p className="empty">Raros: {Object.values(BLOCK_META).filter((b) => b.rare).map((b) => b.label).join(', ')}</p>
               </div>
               <EnergyPacksShop
+                live={usdtLive}
                 onBuyUsd={(id) => setModal({ type: 'usd', kind: 'energy', id })}
                 onBuyUsdt={openUsdtEnergy}
               />
@@ -1240,37 +1272,47 @@ export default function App() {
               {modal.type === 'usdt' && (
                 <>
                   <h3 id="usdt-pay-title">
-                    Pagar con USDT {modal.invoice.live ? '' : '· DEMO'}
+                    {modal.invoice.status === 'expired'
+                      ? 'USDT no disponible'
+                      : modal.invoice.live
+                        ? 'Pagar con USDT'
+                        : 'Pagar con USDT · DEMO'}
                   </h3>
                   <p>
                     {modal.invoice.label} · <strong>{formatUsdt(modal.invoice.amountUsdt)}</strong>
                   </p>
                   <p className="pay-demo-note">
-                    {modal.invoice.live
-                      ? 'NOWPayments · USDT TRC20 · ítems de juego · sin retiros BTC'
-                      : 'DEMO · sin on-chain · sin retiros BTC · ítems de juego solamente'}
+                    {modal.invoice.status === 'expired'
+                      ? 'Sin grant. Revisa API routes + secrets y republish.'
+                      : modal.invoice.live
+                        ? 'NOWPayments · USDT TRC20 · ítems de juego · sin retiros BTC'
+                        : 'DEMO · sin on-chain · sin retiros BTC · ítems de juego solamente'}
                   </p>
                   <div className="usdt-invoice" id="usdt-invoice">
-                    <div>
-                      Red <b>{modal.invoice.network}</b>
-                      {modal.invoice.live && usdtPoll !== 'idle' ? ` · ${usdtPoll}` : ''}
-                    </div>
-                    <div
-                      className="usdt-addr"
-                      title={modal.invoice.live ? 'Dirección NOWPayments' : 'Dirección mock DEMO'}
-                    >
-                      {usdtBusy && !modal.invoice.paymentId
-                        ? 'Creando invoice…'
-                        : modal.invoice.address}
-                    </div>
-                    <button
-                      type="button"
-                      className="btn btn-ghost btn-wide"
-                      disabled={!modal.invoice.address}
-                      onClick={() => void navigator.clipboard?.writeText(modal.invoice.address)}
-                    >
-                      {modal.invoice.live ? 'Copiar dirección USDT' : 'Copiar dirección DEMO'}
-                    </button>
+                    {modal.invoice.status !== 'expired' && (
+                      <>
+                        <div>
+                          Red <b>{modal.invoice.network}</b>
+                          {modal.invoice.live && usdtPoll !== 'idle' ? ` · ${usdtPoll}` : ''}
+                        </div>
+                        <div
+                          className="usdt-addr"
+                          title={modal.invoice.live ? 'Dirección NOWPayments' : 'Dirección mock DEMO'}
+                        >
+                          {usdtBusy && !modal.invoice.paymentId
+                            ? 'Creando invoice…'
+                            : modal.invoice.address || '—'}
+                        </div>
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-wide"
+                          disabled={!modal.invoice.address}
+                          onClick={() => void navigator.clipboard?.writeText(modal.invoice.address)}
+                        >
+                          {modal.invoice.live ? 'Copiar dirección USDT' : 'Copiar dirección DEMO'}
+                        </button>
+                      </>
+                    )}
                     {modal.invoice.checkoutUrl && (
                       <a
                         className="btn btn-primary btn-wide"
@@ -1286,7 +1328,18 @@ export default function App() {
                     {modal.invoice.message && <p className="pay-demo-note">{modal.invoice.message}</p>}
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 10 }}>
-                    {modal.invoice.live ? (
+                    {modal.invoice.status === 'expired' ? (
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        onClick={() => {
+                          void resolvePaymentsLive().then((r) => setUsdtLive(!r.demo && r.ready))
+                          setModal(null)
+                        }}
+                      >
+                        Cerrar · reintentar luego
+                      </button>
+                    ) : modal.invoice.live ? (
                       <button type="button" className="btn btn-primary btn-usdt" id="usdt-wait-paid" disabled>
                         {usdtPoll === 'paid'
                           ? 'Pagado · entregando…'
@@ -1299,7 +1352,7 @@ export default function App() {
                         type="button"
                         className="btn btn-primary btn-usdt"
                         id="confirm-usdt-demo"
-                        disabled={usdtBusy}
+                        disabled={usdtBusy || !modal.invoice.paymentId?.startsWith('demo_')}
                         onClick={() => void confirmUsdtDemo()}
                       >
                         {usdtBusy ? 'Confirmando…' : 'Ya pagué · entregar ítem'}

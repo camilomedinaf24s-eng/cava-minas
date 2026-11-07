@@ -1,9 +1,10 @@
 /**
- * Pasarela USDT — DEMO por defecto; NOWPayments cuando keys en server o VITE_PAYMENTS_MODE.
- * Secrets solo en server (docs/usdt-pagos.md).
+ * Pasarela USDT — LIVE cuando /api/payments/usdt/config.ready.
+ * Nunca otorga ítem DEMO si el usuario pidió USDT live y create falló.
  */
 
 import {
+  bustPaymentsConfigCache,
   createNowPaymentsInvoice,
   fetchPaymentsConfig,
   pollNowPaymentsStatus,
@@ -35,14 +36,12 @@ function env(name: string): string | undefined {
   return v && String(v).length ? String(v) : undefined
 }
 
-/** Solo bake-time (puede quedar demo aunque el host ya tenga keys) */
 export function readPaymentsMode(): PaymentsMode {
   const raw = env('VITE_PAYMENTS_MODE') || 'demo'
   if (raw === 'nowpayments' || raw === 'stripe_crypto') return raw
   return 'demo'
 }
 
-/** Sync hint — usar resolvePaymentsLive() para verdad del host */
 export function isPaymentsDemo(): boolean {
   return readPaymentsMode() === 'demo'
 }
@@ -51,50 +50,45 @@ export async function resolvePaymentsLive(): Promise<{
   mode: PaymentsMode
   demo: boolean
   ready: boolean
+  message?: string
 }> {
-  const mode = await resolveLivePaymentsMode()
+  bustPaymentsConfigCache()
   const cfg = await fetchPaymentsConfig()
-  return { mode, demo: mode === 'demo', ready: cfg.ready }
+  const mode = await resolveLivePaymentsMode()
+  return { mode, demo: !cfg.ready, ready: cfg.ready, message: cfg.message }
 }
 
+/**
+ * Create payment.
+ * - ready → NOWPayments only (ok:false on failure — NO silent DEMO grant)
+ * - !ready → DEMO mock invoice (Ya pagué path)
+ */
 export async function createUsdtPayment(req: CreatePaymentRequest): Promise<CreatePaymentResponse> {
-  const mode = await resolveLivePaymentsMode()
+  bustPaymentsConfigCache()
+  const cfg = await fetchPaymentsConfig()
 
-  if (mode === 'demo') {
-    return {
-      ok: true,
-      mode: 'demo',
-      paymentId: `demo_${req.orderId}`,
-      payAddress: 'TCaVaDemoUsdtPay111111111111111111',
-      payAmount: req.amountUsdt,
-      message: 'DEMO · confirmación simulada (no on-chain)',
-    }
-  }
-
-  if (mode === 'nowpayments') {
+  if (cfg.ready) {
     const live = await createNowPaymentsInvoice(req)
-    if (live.ok) return live
-    // Fallback seguro: no cobrar on-chain sin keys/route
-    return {
-      ok: true,
-      mode: 'demo',
-      paymentId: `demo_${req.orderId}`,
-      payAddress: 'TCaVaDemoUsdtPay111111111111111111',
-      payAmount: req.amountUsdt,
-      message: `${live.message} · fallback DEMO`,
-    }
-  }
-
-  if (mode === 'stripe_crypto') {
+    if (live.ok && live.paymentId && !live.paymentId.startsWith('demo_')) return live
     return {
       ok: false,
-      mode,
+      mode: 'nowpayments',
       paymentId: '',
-      message: 'Stub Stripe Crypto: cablear Checkout Session (ver docs/usdt-pagos.md)',
+      message: live.message || 'NOWPayments create failed · sin grant DEMO',
     }
   }
 
-  return { ok: false, mode: 'demo', paymentId: '', message: 'Modo desconocido' }
+  // Explicit DEMO — secrets not on host / routes not mounted
+  return {
+    ok: true,
+    mode: 'demo',
+    paymentId: `demo_${req.orderId}`,
+    payAddress: 'TCaVaDemoUsdtPay111111111111111111',
+    payAmount: req.amountUsdt,
+    message: cfg.message
+      ? `DEMO · ${cfg.message}`
+      : 'DEMO · bind NOWPAYMENTS_API_KEY (+ IPN) y republish',
+  }
 }
 
 export async function getUsdtPaymentStatus(paymentId: string): Promise<'pending' | 'paid' | 'failed'> {

@@ -1,6 +1,5 @@
 /**
- * Shared NOWPayments helpers — server only.
- * Never import from client/Vite bundle.
+ * Shared NOWPayments helpers — server only (publish-app functions).
  */
 
 export const NP_API = 'https://api.nowpayments.io/v1'
@@ -12,7 +11,6 @@ export type CatalogProduct = {
   label: string
 }
 
-/** Precios shop (1 USDT ≈ 1 USD) — no confiar solo en el client */
 export const PRODUCT_CATALOG: Record<string, CatalogProduct> = {
   basic: { productId: 'basic', kind: 'energy', amountUsdt: 0.99, label: '⚡ Pack Básico' },
   medium: { productId: 'medium', kind: 'energy', amountUsdt: 2.99, label: '⚡ Pack Medio' },
@@ -32,13 +30,21 @@ export function json(data: unknown, status = 200): Response {
   })
 }
 
+function readEnv(...names: string[]): string | undefined {
+  for (const name of names) {
+    const v = (typeof process !== 'undefined' ? process.env?.[name] : undefined) as string | undefined
+    if (v && String(v).trim().length > 0) return String(v).trim()
+  }
+  return undefined
+}
+
 export function getApiKey(): string | undefined {
-  const k = process.env.NOWPAYMENTS_API_KEY
+  const k = readEnv('NOWPAYMENTS_API_KEY', 'NOWPAYMENTS_KEY', 'NOW_PAYMENTS_API_KEY')
   return k && k.length > 8 ? k : undefined
 }
 
 export function getIpnSecret(): string | undefined {
-  const k = process.env.NOWPAYMENTS_IPN_SECRET
+  const k = readEnv('NOWPAYMENTS_IPN_SECRET', 'NOWPAYMENTS_IPN', 'NOW_PAYMENTS_IPN_SECRET')
   return k && k.length > 4 ? k : undefined
 }
 
@@ -49,29 +55,23 @@ export function secretsReady(): boolean {
 export function resolveProduct(productId: string, amountUsdt?: number): CatalogProduct | null {
   const p = PRODUCT_CATALOG[productId]
   if (!p) return null
-  if (typeof amountUsdt === 'number' && Math.abs(amountUsdt - p.amountUsdt) > 0.02) {
-    // Client amount mismatch — use catalog (anti-tamper)
-    return p
-  }
+  if (typeof amountUsdt === 'number' && Math.abs(amountUsdt - p.amountUsdt) > 0.02) return p
   return p
 }
 
 export function ipnCallbackUrl(request: Request): string {
-  const fromEnv = process.env.NOWPAYMENTS_IPN_URL
+  const fromEnv = readEnv('NOWPAYMENTS_IPN_URL')
   if (fromEnv && /^https:\/\//i.test(fromEnv)) return fromEnv.replace(/\/$/, '')
   const origin = new URL(request.url).origin
   return `${origin}/api/payments/usdt/ipn`
 }
 
-/** Recursive key sort for NOWPayments IPN HMAC */
 export function sortObject(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(sortObject)
   if (value && typeof value === 'object') {
     const obj = value as Record<string, unknown>
     const out: Record<string, unknown> = {}
-    for (const key of Object.keys(obj).sort()) {
-      out[key] = sortObject(obj[key])
-    }
+    for (const key of Object.keys(obj).sort()) out[key] = sortObject(obj[key])
     return out
   }
   return value
@@ -104,12 +104,9 @@ export async function verifyNowPaymentsIpn(
   }
   const sorted = JSON.stringify(sortObject(parsed))
   const expected = await hmacSha512Hex(secret, sorted)
-  // timing-safe-ish compare
   if (expected.length !== signatureHeader.length) return false
   let ok = 0
-  for (let i = 0; i < expected.length; i++) {
-    ok |= expected.charCodeAt(i) ^ signatureHeader.charCodeAt(i)
-  }
+  for (let i = 0; i < expected.length; i++) ok |= expected.charCodeAt(i) ^ signatureHeader.charCodeAt(i)
   return ok === 0
 }
 
@@ -125,7 +122,6 @@ export function normalizeStatus(status: string | undefined): 'pending' | 'paid' 
   return 'pending'
 }
 
-/** In-memory paid orders (best-effort on serverless; status also hits NP API) */
 const paidOrders = new Map<string, { productId: string; at: number; paymentId: string }>()
 
 export function markPaid(orderId: string, productId: string, paymentId: string): void {

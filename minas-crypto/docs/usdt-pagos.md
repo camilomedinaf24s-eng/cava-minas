@@ -25,9 +25,11 @@ https://cava.apps.grok.bot/api/payments/usdt/ipn
 
    (Si el slug cambia, usa `https://<tu-host>/api/payments/usdt/ipn`.)
 
-4. Republish el app. El client llama `GET /api/payments/usdt/config`:
+4. Republish el app (debe incluir `app/api/payments/usdt/*/route.ts`).  
+   El client llama `GET /api/payments/usdt/config` (JSON, no HTML):
    - si el server ve la API key → **LIVE** (aunque `VITE_PAYMENTS_MODE` siga en `demo`)
-   - si faltan keys → **DEMO** (“Ya pagué” simulado)
+   - si faltan keys / routes no montan → **DEMO** (“Ya pagué” solo en DEMO explícito)
+   - si LIVE create falla → **error sin grant** (ya no cae a Ya pagué)
 
 Opcional bake-time: `VITE_PAYMENTS_MODE=nowpayments` en el build. No hace falta si usas auto-flip por `config.ready`.
 
