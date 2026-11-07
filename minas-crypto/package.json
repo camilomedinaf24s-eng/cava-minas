@@ -6,9 +6,7 @@
     "dev": "next dev -H 0.0.0.0 -p 5173",
     "build": "next build",
     "start": "next start -H 0.0.0.0 -p 4173",
-    "lint": "oxlint",
-    "vite:dev": "vite",
-    "vite:build": "vite build"
+    "lint": "oxlint"
   },
   "dependencies": {
     "framer-motion": "^14.9.1",
@@ -20,9 +18,7 @@
     "@types/node": "^24.19.2",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
-    "@vitejs/plugin-react": "^6.1.2",
     "oxlint": "^1.90.0",
-    "typescript": "~5.8.3",
-    "vite": "^8.3.6"
+    "typescript": "~5.8.3"
   }
 }

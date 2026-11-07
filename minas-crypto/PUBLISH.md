@@ -2,18 +2,20 @@
 
 **Framework:** Next.js 15 — required for `app/api/payments/usdt/*/route.ts` and `app/api/me/operator` serverless handlers.
 
-Vite-only static deploys **do not** run API routes; that was why checkout stayed DEMO.
+Vite-only static deploys **do not** run API routes; that was why checkout stayed DEMO. Vite entry files live under `_legacy-vite/` only.
 
 ## Build
+
+`next.config.ts` sets `distDir: 'dist'` so publish-app finds Output Directory `dist` after `next build`. That folder is the Next server build (not a static export) — API routes still run via `next start`.
 
 ```bash
 cd minas-crypto
 npm install
-npm run build
+npm run build   # writes dist/ (BUILD_ID, server/, static/, …)
 npm run start   # :4173
 ```
 
-Dev: `npm run dev` (:5173).
+Dev: `npm run dev` (:5173). `vercel.json` marks `framework: nextjs`.
 
 ## Secrets / env
 
