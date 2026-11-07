@@ -31,13 +31,20 @@ export type CreatePaymentResponse = {
   message: string
 }
 
-function env(name: string): string | undefined {
-  const v = (import.meta.env as Record<string, string | undefined>)[name]
+function env(name: 'VITE_PAYMENTS_MODE' | 'VITE_PAYMENTS_API_BASE' | 'NEXT_PUBLIC_PAYMENTS_MODE'): string | undefined {
+  const map: Record<string, string | undefined> = {
+    VITE_PAYMENTS_MODE:
+      process.env.NEXT_PUBLIC_PAYMENTS_MODE || process.env.VITE_PAYMENTS_MODE || undefined,
+    NEXT_PUBLIC_PAYMENTS_MODE: process.env.NEXT_PUBLIC_PAYMENTS_MODE || undefined,
+    VITE_PAYMENTS_API_BASE:
+      process.env.NEXT_PUBLIC_PAYMENTS_API_BASE || process.env.VITE_PAYMENTS_API_BASE || undefined,
+  }
+  const v = map[name]
   return v && String(v).length ? String(v) : undefined
 }
 
 export function readPaymentsMode(): PaymentsMode {
-  const raw = env('VITE_PAYMENTS_MODE') || 'demo'
+  const raw = env('VITE_PAYMENTS_MODE') || env('NEXT_PUBLIC_PAYMENTS_MODE') || 'demo'
   if (raw === 'nowpayments' || raw === 'stripe_crypto') return raw
   return 'demo'
 }
@@ -78,7 +85,6 @@ export async function createUsdtPayment(req: CreatePaymentRequest): Promise<Crea
     }
   }
 
-  // Explicit DEMO — secrets not on host / routes not mounted
   return {
     ok: true,
     mode: 'demo',
@@ -124,6 +130,7 @@ export function markPaymentGranted(paymentId: string): void {
 
 export const PAYMENTS_ENV_KEYS = [
   'VITE_PAYMENTS_MODE',
+  'NEXT_PUBLIC_PAYMENTS_MODE',
   'VITE_PAYMENTS_API_BASE',
   'NOWPAYMENTS_API_KEY',
   'NOWPAYMENTS_IPN_SECRET',

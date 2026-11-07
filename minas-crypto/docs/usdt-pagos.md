@@ -1,73 +1,52 @@
-# Pagos USDT — CAVA Idle Mine (NOWPayments)
+# Pagos USDT — CAVA Idle Mine (NOWPayments on grok.bot)
 
-**Alcance:** cobros USDT (TRC20) por ⚡ energía y cajas (ítems de juego).  
-**No:** retiros BTC, promesas de ganancias, yield/APY.
+**Stack:** Next.js 15 App Router (required so `app/api/**/route.ts` runs on publish-app).  
+**Alcance:** cobros USDT TRC20 por ⚡ / cajas. **No** retiros BTC.
 
-## Precios (1 USDT ≈ 1 USD)
+## Host paths (cava.apps.grok.bot)
+
+| Method | URL |
+|--------|-----|
+| GET | `https://cava.apps.grok.bot/api/payments/usdt/config` |
+| POST | `https://cava.apps.grok.bot/api/payments/usdt/create` |
+| GET | `https://cava.apps.grok.bot/api/payments/usdt/status?id=` |
+| POST | `https://cava.apps.grok.bot/api/payments/usdt/ipn` |
+
+IPN callback in NOWPayments dashboard:
+
+```
+https://cava.apps.grok.bot/api/payments/usdt/ipn
+```
+
+## Secrets (bind — never paste values)
+
+- `NOWPAYMENTS_API_KEY`
+- `NOWPAYMENTS_IPN_SECRET`
+- Optional: `NOWPAYMENTS_IPN_URL` (defaults to `{origin}/api/payments/usdt/ipn`)
+
+## LIVE vs DEMO
+
+1. After publish, signed-in browser: `GET /api/payments/usdt/config` must return **JSON** `{ "ready": true }`.
+2. If response is HTML → routes not mounted (old Vite build) → DEMO.
+3. When `ready`, shop shows **USDT LIVE**; Pagar creates a real NP invoice (address / checkout).
+4. Create failure → error, **no** “Ya pagué” grant.
+5. DEMO “Ya pagué” only when `ready:false` (no keys / no routes).
+
+Optional bake: `NEXT_PUBLIC_PAYMENTS_MODE=nowpayments` (auto-LIVE still follows `config.ready`).
+
+## Precios
 
 | Producto | USDT |
 |----------|------|
 | ⚡ Básico / Medio / Grande | 0.99 / 2.99 / 6.99 |
 | Caja común / rara / legendaria | 0.99 / 4.99 / 14.99 |
 
-## Cómo se enciende LIVE en cava.apps.grok.bot
-
-1. En Cursor → Secrets (My Secrets), asegúrate de tener:
-   - `NOWPAYMENTS_API_KEY`
-   - `NOWPAYMENTS_IPN_SECRET`  
-   (valores ya en tus secrets — **no los pegues en chat**).
-2. Bind esos nombres al app `minas-crypto` / publish (publish worker).
-3. En el dashboard NOWPayments → IPN callback URL:
-
-```
-https://cava.apps.grok.bot/api/payments/usdt/ipn
-```
-
-   (Si el slug cambia, usa `https://<tu-host>/api/payments/usdt/ipn`.)
-
-4. Republish el app (debe incluir `app/api/payments/usdt/*/route.ts`).  
-   El client llama `GET /api/payments/usdt/config` (JSON, no HTML):
-   - si el server ve la API key → **LIVE** (aunque `VITE_PAYMENTS_MODE` siga en `demo`)
-   - si faltan keys / routes no montan → **DEMO** (“Ya pagué” solo en DEMO explícito)
-   - si LIVE create falla → **error sin grant** (ya no cae a Ya pagué)
-
-Opcional bake-time: `VITE_PAYMENTS_MODE=nowpayments` en el build. No hace falta si usas auto-flip por `config.ready`.
-
-## Env
+## Local
 
 ```bash
-# Client (público / bake)
-VITE_PAYMENTS_MODE=demo          # puede quedarse demo; LIVE = keys en server
-VITE_PAYMENTS_API_BASE=          # vacío = same origin (cava.apps.grok.bot)
-
-# SERVER ONLY (bind-app-secrets — nunca VITE_)
-NOWPAYMENTS_API_KEY=
-NOWPAYMENTS_IPN_SECRET=
-# Opcional override (default = {origin}/api/payments/usdt/ipn)
-NOWPAYMENTS_IPN_URL=https://cava.apps.grok.bot/api/payments/usdt/ipn
+cd minas-crypto
+npm install
+NOWPAYMENTS_API_KEY=… NOWPAYMENTS_IPN_SECRET=… npm run dev
+# or: npm run build && NOWPAYMENTS_API_KEY=… npm run start
+curl -s localhost:5173/api/payments/usdt/config
 ```
-
-## Routes (publish-app web handlers)
-
-| Method | Path | Rol |
-|--------|------|-----|
-| GET | `/api/payments/usdt/config` | `{ ready }` sin secrets |
-| POST | `/api/payments/usdt/create` | Crea payment NP (catálogo server) |
-| GET | `/api/payments/usdt/status?id=` | Poll NP + cache IPN |
-| POST | `/api/payments/usdt/ipn` | Webhook; verifica `x-nowpayments-sig` HMAC-SHA512 |
-
-Código: `api/payments/usdt/*` + client `src/game/paymentsApi.ts` / `nowpayments.ts`.
-
-## Flujo grant
-
-1. Shop → Pagar USDT → `create` → dirección / checkout URL.
-2. Usuario paga USDT TRC20.
-3. IPN `finished`/`confirmed` → marca paid (y status lo confirma vía NP API).
-4. Client poll cada 4s → al `paid` entrega ⚡/caja **una vez** (localStorage anti-doble).
-5. Sin keys / create falla → UI DEMO con “Ya pagué”.
-
-## Compliance
-
-- Sin retiros BTC.
-- Badge DEMO mientras `config.ready=false`.
-- Copy: ítems de juego · sin inversión.

@@ -1,49 +1,25 @@
-# Publicar CAVA Idle Mine (DEMO)
+# Publish CAVA on Cursor Apps (grok.bot)
 
-Marca: **CAVA** · badge **DEMO** · sin crypto real.
+**Framework:** Next.js 15 — required for `app/api/payments/usdt/*/route.ts` serverless handlers.
 
-## Build local
+Vite-only static deploys **do not** run API routes; that was why checkout stayed DEMO.
+
+## Build
 
 ```bash
 cd minas-crypto
 npm install
 npm run build
-npm run preview   # http://127.0.0.1:4173
+npm run start   # :4173
 ```
 
-Dev:
+Dev: `npm run dev` (:5173).
 
-```bash
-npm run dev -- --host 127.0.0.1 --port 5173
-```
+## Secrets
 
-## Hosting sugerido
+Bind (names only): `NOWPAYMENTS_API_KEY`, `NOWPAYMENTS_IPN_SECRET`.
 
-1. Subir carpeta `dist/` a Vercel / Netlify / Cloudflare Pages (static).
-2. O conectar repo GitHub y auto-deploy en push a `main`.
+## Post-publish check
 
-## Bloqueo actual
-
-- Este entorno **no tiene `git remote` / origin** configurado.
-- Sin URL de repo vacío de Andres no se puede `git push` ni publicar desde CI.
-- Cuando exista remote:
-
-```bash
-git remote add origin git@github.com:<ORG>/cava-idle-mine.git
-git push -u origin cursor/minas-crypto-mvp-cbf7
-```
-
-Luego conectar el host al repo y activar preview.
-
-## Checklist pre-publish
-
-- [x] `npm run build` OK
-- [x] Marca CAVA + DEMO badge en UI
-- [x] Pagos = mock / DEMO (Stripe path documentado)
-- [ ] Remote GitHub
-- [ ] Dominio / env secrets (Stripe keys reales — solo después del mock)
-
-## Stripe (siguiente)
-
-Mock listo en app (`/api/stripe/checkout?price=…` ready path).  
-Para real: crear Prices en Stripe Dashboard y un endpoint serverless que cree Checkout Session.
+Signed in → `GET /api/payments/usdt/config` → JSON `ready: true`.  
+Shop: USDT LIVE · real pay address (not `TCaVaDemo…`).

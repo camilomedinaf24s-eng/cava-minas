@@ -1,5 +1,5 @@
 /**
- * NOWPayments USDT — client hooks.
+ * NOWPayments USDT — client hooks (Next.js + publish-app).
  * DEMO solo si el server NO tiene keys. Si ready=true, create real (sin grant DEMO).
  */
 
@@ -14,7 +14,11 @@ export type NowPaymentsCreateBody = CreatePaymentRequest & {
 }
 
 function apiBase(): string {
-  return ((import.meta.env.VITE_PAYMENTS_API_BASE as string | undefined) || '').replace(/\/$/, '')
+  return (
+    process.env.NEXT_PUBLIC_PAYMENTS_API_BASE ||
+    process.env.VITE_PAYMENTS_API_BASE ||
+    ''
+  ).replace(/\/$/, '')
 }
 
 function url(path: string): string {
@@ -22,7 +26,8 @@ function url(path: string): string {
 }
 
 function bakedMode(): PaymentsMode {
-  const raw = (import.meta.env.VITE_PAYMENTS_MODE as string | undefined) || 'demo'
+  const raw =
+    process.env.NEXT_PUBLIC_PAYMENTS_MODE || process.env.VITE_PAYMENTS_MODE || 'demo'
   if (raw === 'nowpayments' || raw === 'stripe_crypto') return raw
   return 'demo'
 }
@@ -56,7 +61,6 @@ export async function fetchPaymentsConfig(): Promise<{
     })
     const text = await res.text()
     if (!res.ok || !looksLikeJsonResponse(res, text)) {
-      // HTML gate / SPA fallback → routes not mounted or auth HTML
       cachedReady = false
       readyFetchedAt = now
       return {
@@ -67,7 +71,6 @@ export async function fetchPaymentsConfig(): Promise<{
     }
     const data = JSON.parse(text) as {
       ready?: boolean
-      mode?: string
       hasApiKey?: boolean
       hasIpnSecret?: boolean
       message?: string
@@ -94,7 +97,6 @@ export async function fetchPaymentsConfig(): Promise<{
   }
 }
 
-/** Invalidate cache after failed create so UI can re-check */
 export function bustPaymentsConfigCache(): void {
   cachedReady = null
   readyFetchedAt = 0
