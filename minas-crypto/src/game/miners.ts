@@ -149,8 +149,8 @@ export const BOXES: {
     name: 'Caja común',
     blurb: 'Entry · alta chance rank 1–2',
     priceMine: 40,
-    priceUsd: 0.99,
-    priceLabel: '$0.99 DEMO',
+    priceUsd: 9.99,
+    priceLabel: '$9.99',
     weights: [
       { rarity: 'common', w: 82.87 },
       { rarity: 'rare', w: 10.36 },
@@ -165,8 +165,8 @@ export const BOXES: {
     name: 'Caja rara',
     blurb: 'Progresión · rank 2–4',
     priceMine: 180,
-    priceUsd: 4.99,
-    priceLabel: '$4.99 DEMO',
+    priceUsd: 14.99,
+    priceLabel: '$14.99',
     weights: [
       { rarity: 'common', w: 2 },
       { rarity: 'rare', w: 80.5 },
@@ -181,8 +181,8 @@ export const BOXES: {
     name: 'Caja legendaria',
     blurb: 'High ticket · rank 3–6',
     priceMine: 650,
-    priceUsd: 14.99,
-    priceLabel: '$14.99 DEMO',
+    priceUsd: 24.99,
+    priceLabel: '$24.99',
     weights: [
       { rarity: 'common', w: 0 },
       { rarity: 'rare', w: 0 },

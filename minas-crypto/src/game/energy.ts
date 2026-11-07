@@ -23,7 +23,7 @@ export type EnergyPack = {
   tier: 'basic' | 'medium' | 'large'
 }
 
-/** 3 packs ⚡ — USD $0.99 / $2.99 / $6.99 */
+/** 3 packs ⚡ — floors ≥ NOWPayments USDT min (~$9 TRC20) */
 export const ENERGY_PACKS: EnergyPack[] = [
   {
     id: 'basic',
@@ -31,7 +31,7 @@ export const ENERGY_PACKS: EnergyPack[] = [
     symbol: '⚡',
     blurb: 'Recarga crew a 100. Alto volumen.',
     priceMine: 30,
-    priceUsd: 0.99,
+    priceUsd: 9.99,
     maxEnergy: 100,
     bolts: 1,
     tier: 'basic',
@@ -42,7 +42,7 @@ export const ENERGY_PACKS: EnergyPack[] = [
     symbol: '⚡',
     blurb: 'Recarga a 180. Mejor valor.',
     priceMine: 90,
-    priceUsd: 2.99,
+    priceUsd: 14.99,
     maxEnergy: 180,
     bolts: 2,
     tier: 'medium',
@@ -53,7 +53,7 @@ export const ENERGY_PACKS: EnergyPack[] = [
     symbol: '⚡',
     blurb: 'Recarga a 320. Sesión larga.',
     priceMine: 220,
-    priceUsd: 6.99,
+    priceUsd: 19.99,
     maxEnergy: 320,
     bolts: 3,
     tier: 'large',

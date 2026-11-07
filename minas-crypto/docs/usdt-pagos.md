@@ -43,8 +43,10 @@ Optional bake: `NEXT_PUBLIC_PAYMENTS_MODE=nowpayments` (auto-LIVE still follows 
 
 | Producto | USDT |
 |----------|------|
-| ⚡ Básico / Medio / Grande | 0.99 / 2.99 / 6.99 |
-| Caja común / rara / legendaria | 0.99 / 4.99 / 14.99 |
+| ⚡ Básico / Medio / Grande | 9.99 / 14.99 / 19.99 |
+| Caja común / rara / legendaria | 9.99 / 14.99 / 24.99 |
+
+Floors ≥ NOWPayments USDT network min (~$9 TRC20). Create queries `/min-amount` and may bump further.
 
 ## Local
 

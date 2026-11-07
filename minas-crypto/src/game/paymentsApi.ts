@@ -39,6 +39,9 @@ export type CreatePaymentResponse = {
   network?: string
   payinExtraId?: string
   checkoutUrl?: string
+  priceBumped?: boolean
+  catalogUsd?: number
+  minFiatUsd?: number
   message: string
 }
 

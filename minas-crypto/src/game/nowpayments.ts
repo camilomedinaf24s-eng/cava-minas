@@ -210,6 +210,9 @@ export async function createNowPaymentsInvoice(
       network: data.network,
       payinExtraId: data.payinExtraId ?? data.payin_extra_id,
       checkoutUrl: data.checkoutUrl,
+      priceBumped: data.priceBumped,
+      catalogUsd: data.catalogUsd,
+      minFiatUsd: data.minFiatUsd,
       message: data.message ?? 'Pago USDT listo · copia la dirección',
     }
   } catch {

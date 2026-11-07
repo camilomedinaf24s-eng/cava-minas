@@ -18,13 +18,13 @@ export type StripeProduct = {
 }
 
 export const STRIPE_PRODUCTS: StripeProduct[] = [
-  { id: 'energy_basic', name: '⚡ Energía Básico', priceUsd: 0.99, blurb: 'Recarga cap 100' },
-  { id: 'energy_medium', name: '⚡ Energía Medio', priceUsd: 2.99, blurb: 'Recarga cap 180' },
-  { id: 'energy_large', name: '⚡ Energía Grande', priceUsd: 6.99, blurb: 'Recarga cap 320' },
-  { id: 'box_common', name: 'Caja común', priceUsd: 0.99, blurb: 'Entry Dig' },
-  { id: 'box_rare', name: 'Caja rara', priceUsd: 4.99, blurb: 'Progresión' },
-  { id: 'box_legendary', name: 'Caja legendaria', priceUsd: 14.99, blurb: 'High ticket' },
-  { id: 'starter', name: 'Starter Pack', priceUsd: 4.99, blurb: 'Caja rara + ⚡ Medio' },
+  { id: 'energy_basic', name: '⚡ Energía Básico', priceUsd: 9.99, blurb: 'Recarga cap 100' },
+  { id: 'energy_medium', name: '⚡ Energía Medio', priceUsd: 14.99, blurb: 'Recarga cap 180' },
+  { id: 'energy_large', name: '⚡ Energía Grande', priceUsd: 19.99, blurb: 'Recarga cap 320' },
+  { id: 'box_common', name: 'Caja común', priceUsd: 9.99, blurb: 'Entry Dig' },
+  { id: 'box_rare', name: 'Caja rara', priceUsd: 14.99, blurb: 'Progresión' },
+  { id: 'box_legendary', name: 'Caja legendaria', priceUsd: 24.99, blurb: 'High ticket' },
+  { id: 'starter', name: 'Starter Pack', priceUsd: 14.99, blurb: 'Caja rara + ⚡ Medio' },
   { id: 'season_pass', name: 'Pase temporada', priceUsd: 9.99, blurb: 'Track premium 30 días' },
 ]
 

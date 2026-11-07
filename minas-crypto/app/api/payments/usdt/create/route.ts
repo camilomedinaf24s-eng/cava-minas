@@ -24,12 +24,16 @@ type Body = {
 /** Preferred USDT networks (TRC20 → Polygon → BSC → ERC20) */
 const USDT_PREFERENCE = ['usdttrc20', 'usdtmatic', 'usdtbsc', 'usdterc20', 'usdt'] as const
 
+/** Safety floor when min-amount API unavailable (USDT networks ~$9) */
+const FALLBACK_MIN_USD = 9.5
+
 type NpCreateAttempt = {
   pay_currency: string
   is_fixed_rate: boolean
   status: number
   message: string
   code?: string
+  price_usd?: number
 }
 
 type PaySuccess = {
@@ -38,7 +42,10 @@ type PaySuccess = {
   payAmount: number
   payCurrency: string
   payinExtraId?: string
-  via: 'payment' | 'invoice-payment'
+  priceUsd: number
+  catalogUsd: number
+  bumped: boolean
+  minFiatUsd?: number
 }
 
 function asciiDesc(label: string, productId: string): string {
@@ -94,6 +101,10 @@ function readPayAmount(data: Record<string, unknown>, fallback: number): number 
   return fallback
 }
 
+function roundUsd(n: number): number {
+  return Math.ceil(n * 100) / 100
+}
+
 async function fetchMerchantCoins(apiKey: string): Promise<string[]> {
   try {
     const res = await fetch(`${NP_API}/merchant/coins`, {
@@ -132,7 +143,65 @@ function pickPayCurrencies(requested: string | undefined, merchant: string[]): s
   return out.slice(0, 6)
 }
 
-/** GET /payment/:id — fill missing pay_address */
+/**
+ * GET /min-amount?currency_from=usd&currency_to=usdttrc20&fiat_equivalent=usd
+ * Returns fiat floor in USD for that pay network.
+ */
+async function fetchMinFiatUsd(
+  apiKey: string,
+  payCurrency: string,
+  isFixed: boolean,
+): Promise<{ minCrypto?: number; minFiatUsd: number; source: string }> {
+  try {
+    const qs = new URLSearchParams({
+      currency_from: 'usd',
+      currency_to: payCurrency,
+      fiat_equivalent: 'usd',
+      is_fixed_rate: isFixed ? 'true' : 'false',
+    })
+    const res = await fetch(`${NP_API}/min-amount?${qs}`, {
+      headers: { 'x-api-key': apiKey },
+      cache: 'no-store',
+    })
+    if (!res.ok) {
+      return { minFiatUsd: FALLBACK_MIN_USD, source: `fallback:${res.status}` }
+    }
+    const data = (await res.json()) as {
+      min_amount?: number | string
+      fiat_equivalent?: number | string
+    }
+    const minCrypto =
+      typeof data.min_amount === 'number'
+        ? data.min_amount
+        : data.min_amount
+          ? Number(data.min_amount)
+          : undefined
+    let minFiat =
+      typeof data.fiat_equivalent === 'number'
+        ? data.fiat_equivalent
+        : data.fiat_equivalent
+          ? Number(data.fiat_equivalent)
+          : undefined
+    // For USDT* pairs, min_amount is already ~USD 1:1 when fiat missing
+    if ((!minFiat || !Number.isFinite(minFiat)) && minCrypto && Number.isFinite(minCrypto)) {
+      minFiat = minCrypto
+    }
+    if (!minFiat || !Number.isFinite(minFiat) || minFiat <= 0) {
+      return { minCrypto, minFiatUsd: FALLBACK_MIN_USD, source: 'fallback:parse' }
+    }
+    return { minCrypto, minFiatUsd: minFiat, source: 'min-amount' }
+  } catch {
+    return { minFiatUsd: FALLBACK_MIN_USD, source: 'fallback:error' }
+  }
+}
+
+/** Charge at least NP min (+2% buffer) so FX never drops crypto below min */
+function effectivePriceUsd(catalogUsd: number, minFiatUsd: number): { priceUsd: number; bumped: boolean } {
+  const floor = roundUsd(minFiatUsd * 1.02)
+  if (catalogUsd + 0.001 >= floor) return { priceUsd: roundUsd(catalogUsd), bumped: false }
+  return { priceUsd: floor, bumped: true }
+}
+
 async function hydratePaymentAddress(
   apiKey: string,
   paymentId: string,
@@ -161,7 +230,7 @@ async function hydratePaymentAddress(
 
 /**
  * POST /api/payments/usdt/create
- * Always returns pay_address for in-app copy (no blank NP hosted widget).
+ * Always USD price_currency + pay_currency; bump to NP min; prefer /v1/payment with pay_address.
  */
 export async function POST(request: Request) {
   const rl = checkCreateRateLimit(request)
@@ -211,36 +280,41 @@ export async function POST(request: Request) {
     )
   }
 
+  const catalogUsd = product.amountUsdt
   const orderId = newServerOrderId()
   const apiKey = getApiKey()!
   const ipn = ipnCallbackUrl(request)
+  // Fixed rate raises mins (~$20 USDT) — keep floating unless explicitly enabled
   const wantFixed = (process.env.NOWPAYMENTS_FIXED_RATE || '').toLowerCase() === 'true'
-
-  const pending: OrderRecord = {
-    orderId,
-    paymentId: '',
-    productId: product.productId,
-    kind: product.kind,
-    amountUsdt: product.amountUsdt,
-    status: 'pending',
-    createdAt: Date.now(),
-  }
-  rememberOrder(pending)
+  const fixedFlags = wantFixed ? [true, false] : [false]
 
   const merchantCoins = await fetchMerchantCoins(apiKey)
   const currencies = pickPayCurrencies(body.payCurrency, merchantCoins)
-  const fixedFlags = wantFixed ? [true, false] : [false, true]
 
   const attempts: NpCreateAttempt[] = []
-  let lastData: Record<string, unknown> = {}
-  let lastStatus = 0
   let success: PaySuccess | undefined
 
-  // 1) Prefer direct /v1/payment (returns pay_address for white-label / in-app UI)
+  // Prefer /v1/payment only (no invoice-payment — that path produced crypto-below-min errors)
   for (const payCurrency of currencies) {
     for (const isFixed of fixedFlags) {
+      const minInfo = await fetchMinFiatUsd(apiKey, payCurrency, isFixed)
+      const { priceUsd, bumped } = effectivePriceUsd(catalogUsd, minInfo.minFiatUsd)
+
+      // Bind order to the charged USD amount (for IPN/status match)
+      const pending: OrderRecord = {
+        orderId,
+        paymentId: '',
+        productId: product.productId,
+        kind: product.kind,
+        amountUsdt: priceUsd,
+        status: 'pending',
+        createdAt: Date.now(),
+      }
+      rememberOrder(pending)
+
+      // CRITICAL: price in USD — never send pay_amount (lets NP convert; avoids FX-under-min)
       const payload: Record<string, unknown> = {
-        price_amount: product.amountUsdt,
+        price_amount: priceUsd,
         price_currency: 'usd',
         pay_currency: payCurrency,
         order_id: orderId,
@@ -251,10 +325,14 @@ export async function POST(request: Request) {
       if (/^https:\/\//i.test(ipn)) payload.ipn_callback_url = ipn
 
       console.info('[np-create]', {
-        price_amount: payload.price_amount,
-        price_currency: payload.price_currency,
-        pay_currency: payload.pay_currency,
-        is_fixed_rate: payload.is_fixed_rate,
+        price_amount: priceUsd,
+        price_currency: 'usd',
+        pay_currency: payCurrency,
+        is_fixed_rate: isFixed,
+        catalog_usd: catalogUsd,
+        min_fiat_usd: minInfo.minFiatUsd,
+        min_source: minInfo.source,
+        bumped,
         order_id: orderId,
         ipn_host: ipnHostOnly(ipn),
         productId: product.productId,
@@ -276,13 +354,12 @@ export async function POST(request: Request) {
           is_fixed_rate: isFixed,
           status: 0,
           message: 'NOWPayments unreachable',
+          price_usd: priceUsd,
         })
         continue
       }
 
       const data = (await npRes.json().catch(() => ({}))) as Record<string, unknown>
-      lastData = data
-      lastStatus = npRes.status
 
       if (!npRes.ok) {
         const err = parseNpError(data, npRes.status)
@@ -292,11 +369,12 @@ export async function POST(request: Request) {
           status: npRes.status,
           message: err.message,
           code: err.code,
+          price_usd: priceUsd,
         })
         console.info('[np-create-fail]', {
           status: npRes.status,
           pay_currency: payCurrency,
-          is_fixed_rate: isFixed,
+          price_usd: priceUsd,
           message: err.message,
         })
         continue
@@ -309,19 +387,20 @@ export async function POST(request: Request) {
           is_fixed_rate: isFixed,
           status: npRes.status,
           message: 'Create sin payment_id',
+          price_usd: priceUsd,
         })
         continue
       }
 
       let payAddress = readPayAddress(data)
-      let payAmount = readPayAmount(data, product.amountUsdt)
+      let payAmount = readPayAmount(data, priceUsd)
       let payinExtraId =
         data.payin_extra_id != null && String(data.payin_extra_id).length
           ? String(data.payin_extra_id)
           : undefined
 
       if (!payAddress) {
-        const hydrated = await hydratePaymentAddress(apiKey, paymentId, product.amountUsdt)
+        const hydrated = await hydratePaymentAddress(apiKey, paymentId, priceUsd)
         payAddress = hydrated.payAddress || ''
         payAmount = hydrated.payAmount
         if (hydrated.payinExtraId) payinExtraId = hydrated.payinExtraId
@@ -333,6 +412,7 @@ export async function POST(request: Request) {
           is_fixed_rate: isFixed,
           status: npRes.status,
           message: 'payment sin pay_address',
+          price_usd: priceUsd,
         })
         continue
       }
@@ -344,162 +424,53 @@ export async function POST(request: Request) {
         payAmount,
         payCurrency,
         payinExtraId,
-        via: 'payment',
+        priceUsd,
+        catalogUsd,
+        bumped,
+        minFiatUsd: minInfo.minFiatUsd,
       }
       break
     }
     if (success) break
   }
 
-  // 2) Fallback: invoice → invoice-payment (must yield pay_address; never blank hosted-only)
-  if (!success) {
-    for (const payCurrency of currencies) {
-      const invoicePayload: Record<string, unknown> = {
-        price_amount: product.amountUsdt,
-        price_currency: 'usd',
-        order_id: orderId,
-        order_description: asciiDesc(product.label, product.productId),
-        is_fixed_rate: false,
-        pay_currency: payCurrency,
-      }
-      if (/^https:\/\//i.test(ipn)) invoicePayload.ipn_callback_url = ipn
-
-      console.info('[np-invoice]', {
-        price_amount: invoicePayload.price_amount,
-        pay_currency: payCurrency,
-        order_id: orderId,
-        ipn_host: ipnHostOnly(ipn),
-      })
-
-      try {
-        const invRes = await fetch(`${NP_API}/invoice`, {
-          method: 'POST',
-          headers: {
-            'x-api-key': apiKey,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(invoicePayload),
-        })
-        const invData = (await invRes.json().catch(() => ({}))) as Record<string, unknown>
-        if (!invRes.ok) {
-          const err = parseNpError(invData, invRes.status)
-          attempts.push({
-            pay_currency: payCurrency,
-            is_fixed_rate: false,
-            status: invRes.status,
-            message: `invoice: ${err.message}`,
-            code: err.code,
-          })
-          continue
-        }
-
-        const invoiceId = String(invData.id ?? invData.invoice_id ?? '')
-        if (!invoiceId) {
-          attempts.push({
-            pay_currency: payCurrency,
-            is_fixed_rate: false,
-            status: invRes.status,
-            message: 'invoice sin id',
-          })
-          continue
-        }
-
-        const payFromInv = await fetch(`${NP_API}/invoice-payment`, {
-          method: 'POST',
-          headers: {
-            'x-api-key': apiKey,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            iid: Number(invoiceId) || invoiceId,
-            pay_currency: payCurrency,
-          }),
-        })
-        const payData = (await payFromInv.json().catch(() => ({}))) as Record<string, unknown>
-        if (!payFromInv.ok) {
-          attempts.push({
-            pay_currency: payCurrency,
-            is_fixed_rate: false,
-            status: payFromInv.status,
-            message: `invoice-payment: ${parseNpError(payData, payFromInv.status).message}`,
-          })
-          continue
-        }
-
-        const paymentId = String(payData.payment_id ?? payData.id ?? '')
-        let payAddress = readPayAddress(payData)
-        let payAmount = readPayAmount(payData, product.amountUsdt)
-        let payinExtraId =
-          payData.payin_extra_id != null && String(payData.payin_extra_id).length
-            ? String(payData.payin_extra_id)
-            : undefined
-
-        if (paymentId && !payAddress) {
-          const hydrated = await hydratePaymentAddress(apiKey, paymentId, product.amountUsdt)
-          payAddress = hydrated.payAddress || ''
-          payAmount = hydrated.payAmount
-          if (hydrated.payinExtraId) payinExtraId = hydrated.payinExtraId
-        }
-
-        if (!paymentId || !payAddress) {
-          attempts.push({
-            pay_currency: payCurrency,
-            is_fixed_rate: false,
-            status: payFromInv.status,
-            message: 'invoice-payment sin pay_address',
-          })
-          continue
-        }
-
-        attachPaymentId(orderId, paymentId)
-        success = {
-          paymentId,
-          payAddress,
-          payAmount,
-          payCurrency,
-          payinExtraId,
-          via: 'invoice-payment',
-        }
-        break
-      } catch {
-        attempts.push({
-          pay_currency: payCurrency,
-          is_fixed_rate: false,
-          status: 0,
-          message: 'invoice/invoice-payment unreachable',
-        })
-      }
-    }
-  }
-
   if (!success) {
     const last = attempts[attempts.length - 1]
-    const detail = last?.message || parseNpError(lastData, lastStatus).message
+    const belowMin = /less than minimal|min(imum)?/i.test(last?.message || '')
     const tried = attempts
-      .map((a) => `${a.pay_currency}${a.is_fixed_rate ? '+FR' : ''}→${a.status}`)
+      .map((a) => `${a.pay_currency}@$${a.price_usd ?? '?'}${a.is_fixed_rate ? '+FR' : ''}→${a.status}`)
       .slice(0, 8)
       .join(', ')
+    const hint = belowMin
+      ? ` · precio catálogo $${catalogUsd} bajo mínimo NP (~$${FALLBACK_MIN_USD}+ USDT)`
+      : ''
     return json(
       {
         ok: false,
         mode: 'nowpayments',
         paymentId: '',
-        message: `NOWPayments: ${detail}${tried ? ` · tried ${tried}` : ''}`,
-        npStatus: last?.status || lastStatus,
+        message: `NOWPayments: ${last?.message || 'create failed'}${hint}${tried ? ` · tried ${tried}` : ''}`,
+        npStatus: last?.status,
         npCode: last?.code,
+        belowMin: belowMin || undefined,
         debug: {
-          price_amount: product.amountUsdt,
           price_currency: 'usd',
+          catalog_usd: catalogUsd,
           currenciesTried: currencies,
           merchantCoinsCount: merchantCoins.length,
           ipn_host: ipnHostOnly(ipn),
           order_id: orderId,
-          requirePayAddress: true,
+          via: 'payment-only',
         },
       },
       502,
     )
   }
+
+  const net = networkForPayCurrency(success.payCurrency)
+  const bumpNote = success.bumped
+    ? ` · ajustado a mín. NP $${success.priceUsd} (catálogo $${success.catalogUsd})`
+    : ''
 
   return json({
     ok: true,
@@ -508,15 +479,17 @@ export async function POST(request: Request) {
     orderId,
     payAddress: success.payAddress,
     payAmount: success.payAmount,
-    // No hosted checkout URL — in-app address is the primary UX (avoids blank NP widget)
     checkoutUrl: undefined,
     productId: product.productId,
     kind: product.kind,
-    amountUsdt: product.amountUsdt,
-    network: networkForPayCurrency(success.payCurrency),
+    amountUsdt: success.priceUsd,
+    catalogUsd: success.catalogUsd,
+    priceBumped: success.bumped,
+    minFiatUsd: success.minFiatUsd,
+    network: net,
     payCurrency: success.payCurrency,
     payinExtraId: success.payinExtraId,
-    via: success.via,
-    message: `Envía ${success.payAmount} ${success.payCurrency.toUpperCase()} · ${networkForPayCurrency(success.payCurrency)}`,
+    via: 'payment',
+    message: `Envía ${success.payAmount} ${success.payCurrency.toUpperCase()} · ${net}${bumpNote}`,
   })
 }

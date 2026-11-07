@@ -12,13 +12,17 @@ export type CatalogProduct = {
   label: string
 }
 
+/**
+ * Shop floors ≥ NOWPayments USDT network mins (~$9 floating TRC20).
+ * Create still queries /min-amount and may bump further at checkout.
+ */
 export const PRODUCT_CATALOG: Record<string, CatalogProduct> = {
-  basic: { productId: 'basic', kind: 'energy', amountUsdt: 0.99, label: '⚡ Pack Básico' },
-  medium: { productId: 'medium', kind: 'energy', amountUsdt: 2.99, label: '⚡ Pack Medio' },
-  large: { productId: 'large', kind: 'energy', amountUsdt: 6.99, label: '⚡ Pack Grande' },
-  common: { productId: 'common', kind: 'box', amountUsdt: 0.99, label: 'Caja común' },
-  rare: { productId: 'rare', kind: 'box', amountUsdt: 4.99, label: 'Caja rara' },
-  legendary: { productId: 'legendary', kind: 'box', amountUsdt: 14.99, label: 'Caja legendaria' },
+  basic: { productId: 'basic', kind: 'energy', amountUsdt: 9.99, label: '⚡ Pack Básico' },
+  medium: { productId: 'medium', kind: 'energy', amountUsdt: 14.99, label: '⚡ Pack Medio' },
+  large: { productId: 'large', kind: 'energy', amountUsdt: 19.99, label: '⚡ Pack Grande' },
+  common: { productId: 'common', kind: 'box', amountUsdt: 9.99, label: 'Caja común' },
+  rare: { productId: 'rare', kind: 'box', amountUsdt: 14.99, label: 'Caja rara' },
+  legendary: { productId: 'legendary', kind: 'box', amountUsdt: 24.99, label: 'Caja legendaria' },
 }
 
 export type OrderRecord = {
