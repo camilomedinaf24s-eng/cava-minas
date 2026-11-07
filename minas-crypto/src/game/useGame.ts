@@ -1096,11 +1096,14 @@ export function useGame() {
     flash('Progreso reiniciado')
   }, [flash])
 
-  /** Requires operatorAuthorized from /api/me/operator (Cursor identity) */
+  /**
+   * Unlock gifts only after server claim consume (POST /api/me/operator/claim).
+   * Passing a client boolean is not enough — caller must await claimOperatorGiftsOnServer first.
+   */
   const claimOperatorGifts = useCallback(
-    (operatorAuthorized: boolean) => {
-      if (!operatorAuthorized) {
-        flash('Regalos solo para Andres Medina (Cursor identity)')
+    async (serverClaimOk: boolean) => {
+      if (!serverClaimOk) {
+        flash('Regalos bloqueados · servidor no autorizó el claim')
         return false
       }
       let ok = false
@@ -1144,7 +1147,7 @@ export function useGame() {
             at: t,
             amount: 0,
             kind: 'gift',
-            note: '2 cajas REGALO · 2× Mítico 150 F/R/P + hacha 6 · Andres Medina',
+            note: '2 cajas REGALO · server claim · Andres Medina',
           }),
         }
         saveState(next)

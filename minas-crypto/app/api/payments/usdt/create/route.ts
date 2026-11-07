@@ -1,6 +1,7 @@
 import {
   NP_API,
   attachPaymentId,
+  checkCreateRateLimit,
   getApiKey,
   ipnCallbackUrl,
   json,
@@ -27,6 +28,26 @@ type Body = {
  * Body: { productId } — server assigns orderId and binds catalog amount.
  */
 export async function POST(request: Request) {
+  const rl = checkCreateRateLimit(request)
+  if (rl.limited) {
+    return new Response(
+      JSON.stringify({
+        ok: false,
+        mode: 'nowpayments',
+        paymentId: '',
+        message: `Rate limited · retry in ${rl.retryAfterSec}s`,
+      }),
+      {
+        status: 429,
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-store',
+          'Retry-After': String(rl.retryAfterSec),
+        },
+      },
+    )
+  }
+
   if (!secretsReady()) {
     return json(
       {

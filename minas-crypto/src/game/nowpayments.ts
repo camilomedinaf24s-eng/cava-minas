@@ -221,6 +221,7 @@ export async function pollNowPaymentsStatus(paymentId: string): Promise<PaymentS
       status?: string
       paid?: boolean
       grantToken?: string
+      grantRedeemed?: boolean
       productId?: string
       kind?: 'energy' | 'box'
       amountUsdt?: number
@@ -240,6 +241,10 @@ export async function pollNowPaymentsStatus(paymentId: string): Promise<PaymentS
         paymentId: data.paymentId || paymentId,
         message: data.message,
       }
+    }
+    // Already redeemed — do not re-grant
+    if (data.paid === true && data.grantRedeemed) {
+      return { status: 'failed', paid: false, message: 'grant already redeemed' }
     }
     // paid without grant → wait (binding/IPN)
     if (data.paid === true && !data.grantToken) {

@@ -56,7 +56,9 @@ export async function GET(request: Request) {
       productId: known.productId,
       kind: known.kind,
       amountUsdt: known.amountUsdt,
-      grantToken,
+      // null when already redeemed — client must not re-grant
+      grantToken: grantToken || undefined,
+      grantRedeemed: !grantToken,
       source: 'registry',
     })
   }
@@ -120,7 +122,8 @@ export async function GET(request: Request) {
         productId: rec.productId,
         kind: rec.kind,
         amountUsdt: rec.amountUsdt,
-        grantToken,
+        grantToken: grantToken || undefined,
+        grantRedeemed: !grantToken,
         source: 'nowpayments',
       })
     }

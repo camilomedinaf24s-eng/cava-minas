@@ -30,12 +30,22 @@ export type OrderRecord = {
   status: 'pending' | 'paid' | 'failed'
   createdAt: number
   grantIssued?: boolean
+  /** True after first successful redeem — blocks re-issue + reuse */
+  grantRedeemed?: boolean
 }
 
 /** In-memory order registry (best-effort on serverless; grant token is the durable proof) */
 const ordersById = new Map<string, OrderRecord>()
 const ordersByPayment = new Map<string, OrderRecord>()
+/** Exact token strings already redeemed */
 const redeemedGrants = new Set<string>()
+/** orderId / paymentId already redeemed — blocks multi-redeem via re-issued tokens */
+const redeemedOrderKeys = new Set<string>()
+
+/** create rate-limit: sliding window per IP */
+const CREATE_WINDOW_MS = 60_000
+const CREATE_MAX_PER_WINDOW = 8
+const createHitsByKey = new Map<string, number[]>()
 
 export function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -227,9 +237,18 @@ function fromB64urlJson<T>(s: string): T | null {
   }
 }
 
+export function isGrantRedeemed(rec: OrderRecord): boolean {
+  if (rec.grantRedeemed) return true
+  if (redeemedOrderKeys.has(rec.orderId)) return true
+  if (rec.paymentId && redeemedOrderKeys.has(rec.paymentId)) return true
+  return false
+}
+
+/** Issue grant only once per paid order; null if already redeemed */
 export async function issueGrantToken(rec: OrderRecord): Promise<string | null> {
   const secret = getSigningSecret()
   if (!secret || rec.status !== 'paid' || !rec.paymentId) return null
+  if (isGrantRedeemed(rec)) return null
   const payload: GrantPayload = {
     v: 1,
     orderId: rec.orderId,
@@ -245,6 +264,21 @@ export async function issueGrantToken(rec: OrderRecord): Promise<string | null> 
   return `${body}.${sig}`
 }
 
+function markGrantRedeemed(payload: GrantPayload, token: string): void {
+  redeemedGrants.add(token)
+  redeemedOrderKeys.add(payload.orderId)
+  if (payload.paymentId) redeemedOrderKeys.add(payload.paymentId)
+  const rec = lookupOrder(payload.orderId) || lookupOrder(payload.paymentId)
+  if (rec) {
+    rec.grantRedeemed = true
+    rememberOrder(rec)
+  }
+}
+
+/**
+ * Verify HMAC grant and consume once.
+ * Rejects: bad sig, expired, unknown product, already-redeemed token OR orderId/paymentId.
+ */
 export async function verifyAndConsumeGrant(
   token: string,
 ): Promise<{ ok: true; payload: GrantPayload } | { ok: false; message: string }> {
@@ -265,12 +299,44 @@ export async function verifyAndConsumeGrant(
     return { ok: false, message: 'Amount mismatch' }
   }
   if (redeemedGrants.has(token)) return { ok: false, message: 'Grant already redeemed' }
-  // Bind to remembered order when present
+  if (redeemedOrderKeys.has(payload.orderId) || redeemedOrderKeys.has(payload.paymentId)) {
+    return { ok: false, message: 'Grant already redeemed' }
+  }
   const rec = lookupOrder(payload.orderId) || lookupOrder(payload.paymentId)
   if (rec) {
     if (rec.productId !== payload.productId) return { ok: false, message: 'Order product mismatch' }
     if (rec.status !== 'paid') return { ok: false, message: 'Order not paid' }
+    if (rec.grantRedeemed) return { ok: false, message: 'Grant already redeemed' }
   }
-  redeemedGrants.add(token)
+  markGrantRedeemed(payload, token)
   return { ok: true, payload }
+}
+
+export function clientIp(request: Request): string {
+  const xff = request.headers.get('x-forwarded-for')
+  if (xff) {
+    const first = xff.split(',')[0]?.trim()
+    if (first) return first
+  }
+  const real = request.headers.get('x-real-ip')?.trim()
+  if (real) return real
+  const cf = request.headers.get('cf-connecting-ip')?.trim()
+  if (cf) return cf
+  return 'unknown'
+}
+
+/** Sliding-window rate limit for POST /create. Returns null if allowed, else retry-after seconds. */
+export function checkCreateRateLimit(request: Request): { limited: false } | { limited: true; retryAfterSec: number } {
+  const key = `ip:${clientIp(request)}`
+  const now = Date.now()
+  const prev = (createHitsByKey.get(key) || []).filter((t) => now - t < CREATE_WINDOW_MS)
+  if (prev.length >= CREATE_MAX_PER_WINDOW) {
+    const oldest = prev[0] ?? now
+    const retryAfterSec = Math.max(1, Math.ceil((CREATE_WINDOW_MS - (now - oldest)) / 1000))
+    createHitsByKey.set(key, prev)
+    return { limited: true, retryAfterSec }
+  }
+  prev.push(now)
+  createHitsByKey.set(key, prev)
+  return { limited: false }
 }

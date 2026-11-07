@@ -1,6 +1,7 @@
 /**
  * Regalos operador Andres Medina — 2 cajas una vez (ambas Mítico max).
- * Claim gated by /api/me/operator (Cursor identity email allowlist) — NOT by PLAYER brand.
+ * Unlock ONLY after POST /api/me/operator/claim (issue+consume). GET status is not enough.
+ * PLAYER brand is display-only — never authorization.
  */
 
 import { PLAYER } from './brand'

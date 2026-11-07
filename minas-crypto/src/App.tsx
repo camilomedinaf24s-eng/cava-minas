@@ -51,7 +51,7 @@ import { yourRank, weeklyBoard } from './game/ranking'
 import { SEASON, SEASON_TRACK, SKINS, type SkinId } from './game/season'
 import { STRIPE_PRODUCTS, type StripeProductId } from './game/stripeMock'
 import { OPERATOR_GIFTS } from './game/gifts'
-import { fetchOperatorStatus } from './game/operatorApi'
+import { claimOperatorGiftsOnServer, fetchOperatorStatus } from './game/operatorApi'
 import {
   createUsdtPayment,
   getUsdtPaymentStatus,
@@ -1137,15 +1137,17 @@ export default function App() {
                 onClick={() => {
                   setGiftOpened(true)
                   window.setTimeout(() => {
-                    void fetchOperatorStatus(true).then((st) => {
-                      if (!st.operator) {
+                    void (async () => {
+                      const claim = await claimOperatorGiftsOnServer()
+                      if (!claim.ok) {
                         setGiftOpen(false)
+                        setGiftOpened(false)
                         return
                       }
-                      g.claimOperatorGifts(true)
+                      await g.claimOperatorGifts(true)
                       setGiftOpen(false)
                       setNav('miners')
-                    })
+                    })()
                   }, 520)
                 }}
               >
