@@ -1342,9 +1342,10 @@ export default function App() {
                   </p>
                   <p className="pay-demo-note">
                     {modal.invoice.status === 'expired'
-                      ? 'Sin grant. Revisa API routes + secrets y republish.'
+                      ? modal.invoice.message ||
+                        'Sin grant. Revisa NOWPayments (moneda/IPN/clave) y republish.'
                       : modal.invoice.live
-                        ? 'NOWPayments · USDT TRC20 · ítems de juego · sin retiros BTC'
+                        ? 'NOWPayments · USDT · ítems de juego · sin retiros BTC'
                         : 'DEMO · sin on-chain · sin retiros BTC · ítems de juego solamente'}
                   </p>
                   <div className="usdt-invoice" id="usdt-invoice">

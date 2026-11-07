@@ -8,10 +8,12 @@ export async function GET() {
     ready,
     mode: ready ? 'nowpayments' : 'demo',
     payCurrency: 'usdttrc20',
+    payCurrencyFallback: ['usdtmatic', 'usdtbsc', 'usdterc20'],
+    fixedRateDefault: false,
     hasApiKey: Boolean(getApiKey()),
     hasIpnSecret: Boolean(getIpnSecret()),
     message: ready
-      ? 'NOWPayments keys present · checkout live'
+      ? 'NOWPayments keys present · checkout live · USDT TRC20/Polygon preferred'
       : 'DEMO · bind NOWPAYMENTS_API_KEY + NOWPAYMENTS_IPN_SECRET',
   })
 }

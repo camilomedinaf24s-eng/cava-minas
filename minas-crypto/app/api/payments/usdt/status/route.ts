@@ -45,6 +45,31 @@ export async function GET(request: Request) {
     return json({ status: 'pending', mode: 'demo', paid: false, message: 'No API key' })
   }
 
+  // Hosted invoice placeholder — wait for IPN / user completing checkout
+  if (id.startsWith('invoice_')) {
+    const knownInv = lookupOrder(id)
+    if (knownInv?.status === 'paid') {
+      const grantToken = await issueGrantToken(knownInv)
+      return json({
+        status: 'paid',
+        paid: true,
+        paymentId: knownInv.paymentId,
+        orderId: knownInv.orderId,
+        productId: knownInv.productId,
+        kind: knownInv.kind,
+        amountUsdt: knownInv.amountUsdt,
+        grantToken: grantToken || undefined,
+        grantRedeemed: !grantToken,
+        source: 'registry',
+      })
+    }
+    return json({
+      status: 'pending',
+      paid: false,
+      message: 'Complete payment in NOWPayments checkout · waiting IPN',
+    })
+  }
+
   const known = lookupOrder(id)
   if (known?.status === 'paid') {
     const grantToken = await issueGrantToken(known)
