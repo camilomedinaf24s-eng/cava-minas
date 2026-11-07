@@ -8,9 +8,22 @@ import type { CreatePaymentRequest, CreatePaymentResponse, PaymentsMode } from '
 export const NOWPAYMENTS_CREATE_PATH = '/api/payments/usdt/create'
 export const NOWPAYMENTS_STATUS_PATH = '/api/payments/usdt/status'
 export const NOWPAYMENTS_CONFIG_PATH = '/api/payments/usdt/config'
+export const NOWPAYMENTS_REDEEM_PATH = '/api/payments/usdt/redeem'
 
 export type NowPaymentsCreateBody = CreatePaymentRequest & {
   payCurrency?: 'usdttrc20' | 'usdterc20' | 'usdtmatic'
+}
+
+export type PaymentStatusResult = {
+  status: 'pending' | 'paid' | 'failed'
+  paid: boolean
+  grantToken?: string
+  productId?: string
+  kind?: 'energy' | 'box'
+  amountUsdt?: number
+  orderId?: string
+  paymentId?: string
+  message?: string
 }
 
 function apiBase(): string {
@@ -122,8 +135,11 @@ export async function createNowPaymentsInvoice(
       credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        ...req,
+        productId: req.productId,
         payCurrency: req.payCurrency ?? 'usdttrc20',
+        successUrl: req.successUrl,
+        cancelUrl: req.cancelUrl,
+        // amountUsdt / orderId ignored server-side (catalog + cava_ orderId)
       }),
     })
     const text = await res.text()
@@ -172,6 +188,10 @@ export async function createNowPaymentsInvoice(
       ok: true,
       mode: 'nowpayments',
       paymentId,
+      orderId: data.orderId,
+      productId: data.productId,
+      kind: data.kind,
+      amountUsdt: data.amountUsdt,
       payAddress: data.payAddress ?? data.pay_address,
       payAmount: data.payAmount ?? data.pay_amount,
       checkoutUrl: data.checkoutUrl,
@@ -187,21 +207,95 @@ export async function createNowPaymentsInvoice(
   }
 }
 
-export async function pollNowPaymentsStatus(paymentId: string): Promise<'pending' | 'paid' | 'failed'> {
+export async function pollNowPaymentsStatus(paymentId: string): Promise<PaymentStatusResult> {
   try {
     const res = await fetch(
       `${url(NOWPAYMENTS_STATUS_PATH)}?id=${encodeURIComponent(paymentId)}`,
       { cache: 'no-store', credentials: 'same-origin' },
     )
     const text = await res.text()
-    if (!res.ok || !looksLikeJsonResponse(res, text)) return 'pending'
-    const data = JSON.parse(text) as { status?: string; paid?: boolean }
-    if (data.paid) return 'paid'
+    if (!res.ok || !looksLikeJsonResponse(res, text)) {
+      return { status: 'pending', paid: false, message: 'status non-JSON' }
+    }
+    const data = JSON.parse(text) as {
+      status?: string
+      paid?: boolean
+      grantToken?: string
+      productId?: string
+      kind?: 'energy' | 'box'
+      amountUsdt?: number
+      orderId?: string
+      paymentId?: string
+      message?: string
+    }
+    if (data.paid === true && data.grantToken) {
+      return {
+        status: 'paid',
+        paid: true,
+        grantToken: data.grantToken,
+        productId: data.productId,
+        kind: data.kind,
+        amountUsdt: data.amountUsdt,
+        orderId: data.orderId,
+        paymentId: data.paymentId || paymentId,
+        message: data.message,
+      }
+    }
+    // paid without grant → wait (binding/IPN)
+    if (data.paid === true && !data.grantToken) {
+      return { status: 'pending', paid: false, message: 'paid awaiting grant' }
+    }
     const s = (data.status || '').toLowerCase()
-    if (s === 'finished' || s === 'confirmed' || s === 'paid') return 'paid'
-    if (s === 'failed' || s === 'expired' || s === 'refunded') return 'failed'
-    return 'pending'
+    if (s === 'failed' || s === 'expired' || s === 'refunded') {
+      return { status: 'failed', paid: false, message: data.message }
+    }
+    return { status: 'pending', paid: false, message: data.message }
   } catch {
-    return 'pending'
+    return { status: 'pending', paid: false, message: 'status fetch failed' }
+  }
+}
+
+export async function redeemUsdtGrant(grantToken: string): Promise<{
+  ok: boolean
+  productId?: string
+  kind?: 'energy' | 'box'
+  amountUsdt?: number
+  orderId?: string
+  paymentId?: string
+  message?: string
+}> {
+  try {
+    const res = await fetch(url(NOWPAYMENTS_REDEEM_PATH), {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ grantToken }),
+    })
+    const text = await res.text()
+    if (!looksLikeJsonResponse(res, text)) {
+      return { ok: false, message: 'redeem non-JSON' }
+    }
+    const data = JSON.parse(text) as {
+      ok?: boolean
+      productId?: string
+      kind?: 'energy' | 'box'
+      amountUsdt?: number
+      orderId?: string
+      paymentId?: string
+      message?: string
+    }
+    if (!res.ok || !data.ok) {
+      return { ok: false, message: data.message || `redeem ${res.status}` }
+    }
+    return {
+      ok: true,
+      productId: data.productId,
+      kind: data.kind,
+      amountUsdt: data.amountUsdt,
+      orderId: data.orderId,
+      paymentId: data.paymentId,
+    }
+  } catch {
+    return { ok: false, message: 'redeem fetch failed' }
   }
 }

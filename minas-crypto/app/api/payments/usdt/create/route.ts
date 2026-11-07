@@ -1,15 +1,21 @@
 import {
   NP_API,
+  attachPaymentId,
   getApiKey,
   ipnCallbackUrl,
   json,
+  newServerOrderId,
+  rememberOrder,
   resolveProduct,
   secretsReady,
+  type OrderRecord,
 } from '../_shared'
 
 type Body = {
   productId?: string
+  /** Ignored for pricing — catalog is source of truth */
   amountUsdt?: number
+  /** Ignored — server assigns orderId */
   orderId?: string
   payCurrency?: string
   successUrl?: string
@@ -18,7 +24,7 @@ type Body = {
 
 /**
  * POST /api/payments/usdt/create
- * Body: { productId, amountUsdt?, orderId, payCurrency? }
+ * Body: { productId } — server assigns orderId and binds catalog amount.
  */
 export async function POST(request: Request) {
   if (!secretsReady()) {
@@ -40,18 +46,28 @@ export async function POST(request: Request) {
     return json({ ok: false, mode: 'nowpayments', paymentId: '', message: 'Invalid JSON' }, 400)
   }
 
-  const productId = String(body.productId || '')
-  const product = resolveProduct(productId, body.amountUsdt)
+  const product = resolveProduct(String(body.productId || ''))
   if (!product) {
     return json(
-      { ok: false, mode: 'nowpayments', paymentId: '', message: `Unknown productId: ${productId}` },
+      { ok: false, mode: 'nowpayments', paymentId: '', message: 'Unknown productId' },
       400,
     )
   }
 
-  const orderId = String(body.orderId || `cava_${Date.now().toString(36)}`)
+  const orderId = newServerOrderId()
   const payCurrency = body.payCurrency || 'usdttrc20'
   const apiKey = getApiKey()!
+
+  const pending: OrderRecord = {
+    orderId,
+    paymentId: '',
+    productId: product.productId,
+    kind: product.kind,
+    amountUsdt: product.amountUsdt,
+    status: 'pending',
+    createdAt: Date.now(),
+  }
+  rememberOrder(pending)
 
   const payload = {
     price_amount: product.amountUsdt,
@@ -81,7 +97,7 @@ export async function POST(request: Request) {
         ok: false,
         mode: 'nowpayments',
         paymentId: '',
-        message: 'NOWPayments unreachable · UI stays DEMO',
+        message: 'NOWPayments unreachable',
       },
       502,
     )
@@ -89,7 +105,6 @@ export async function POST(request: Request) {
 
   const data = (await npRes.json().catch(() => ({}))) as Record<string, unknown>
   if (!npRes.ok) {
-    // Never echo API key / full error bodies that might include secrets
     return json(
       {
         ok: false,
@@ -102,25 +117,32 @@ export async function POST(request: Request) {
   }
 
   const paymentId = String(data.payment_id ?? data.id ?? '')
+  if (!paymentId) {
+    return json(
+      { ok: false, mode: 'nowpayments', paymentId: '', message: 'Create sin payment_id' },
+      502,
+    )
+  }
+  attachPaymentId(orderId, paymentId)
+
   const payAddress = data.pay_address != null ? String(data.pay_address) : undefined
   const payAmount = typeof data.pay_amount === 'number' ? data.pay_amount : product.amountUsdt
   const checkoutUrl =
     data.invoice_url != null
       ? String(data.invoice_url)
-      : paymentId
-        ? `https://nowpayments.io/payment/?iid=${paymentId}`
-        : undefined
+      : `https://nowpayments.io/payment/?iid=${paymentId}`
 
   return json({
     ok: true,
     mode: 'nowpayments',
     paymentId,
+    orderId,
     payAddress,
     payAmount,
     checkoutUrl,
-    orderId,
     productId: product.productId,
     kind: product.kind,
+    amountUsdt: product.amountUsdt,
     network: 'TRC20',
     message: 'Invoice NOWPayments creada',
   })

@@ -1,4 +1,7 @@
-/** Regalos operador Andres Medina — 2 cajas una vez (ambas Mítico max) */
+/**
+ * Regalos operador Andres Medina — 2 cajas una vez (ambas Mítico max).
+ * Claim gated by /api/me/operator (Cursor identity email allowlist) — NOT by PLAYER brand.
+ */
 
 import { PLAYER } from './brand'
 import {
@@ -12,6 +15,7 @@ import type { RankId } from './ranks'
 import type { GameState } from './types'
 
 export { GIFT_CORE_ATTRS }
+/** Display name only — never use as auth for gifts */
 export const OPERATOR_NAME = PLAYER
 
 /** Gen 2 = ambas cajas rank 6 + hacha 6 */
@@ -74,8 +78,13 @@ export function createGiftMiner(_rank: RankId = 6, now = Date.now(), slot = 0): 
   return stampGiftCores(m, slot)
 }
 
-export function isOperatorSession(name: string = OPERATOR_NAME): boolean {
-  return name.trim().toLowerCase() === OPERATOR_NAME.toLowerCase()
+/**
+ * @deprecated Brand-name check is NOT authorization.
+ * Use fetchOperatorStatus() / operatorAuthorized flag from /api/me/operator.
+ * Kept returning false so accidental call sites never auto-grant gifts.
+ */
+export function isOperatorSession(_name?: string): boolean {
+  return false
 }
 
 export function isGiftMiner(m: Miner): boolean {
@@ -124,10 +133,13 @@ export function sanitizeDeployedIds(
  * Claim incompleto, cores viejos (112), nombre "Minero Legendario", o sin hacha 6.
  * También true si claimed y hay N6 huérfanos a adoptar.
  */
+/**
+ * Repair only when this save already claimed gifts (localStorage).
+ * Never auto-claim for visitors — identity gate is enforced at claim time.
+ */
 export function needsOperatorGiftRepair(
   state: Pick<GameState, 'operatorGiftsClaimed' | 'operatorGiftsGen' | 'miners' | 'ownedAxes'>,
 ): boolean {
-  if (!isOperatorSession()) return false
   const claimed = state.operatorGiftsClaimed || (state.operatorGiftsGen ?? 0) >= 2
   if (!claimed) return false
   const gifts = state.miners.filter(isGiftMiner)

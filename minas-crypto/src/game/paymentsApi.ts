@@ -1,6 +1,7 @@
 /**
  * Pasarela USDT — LIVE cuando /api/payments/usdt/config.ready.
  * Nunca otorga ítem DEMO si el usuario pidió USDT live y create falló.
+ * demo_* NUNCA se marca paid en cliente cuando keys están live.
  */
 
 import {
@@ -8,7 +9,9 @@ import {
   createNowPaymentsInvoice,
   fetchPaymentsConfig,
   pollNowPaymentsStatus,
+  redeemUsdtGrant,
   resolveLivePaymentsMode,
+  type PaymentStatusResult,
 } from './nowpayments'
 
 export type PaymentsMode = 'demo' | 'nowpayments' | 'stripe_crypto'
@@ -16,6 +19,7 @@ export type PaymentsMode = 'demo' | 'nowpayments' | 'stripe_crypto'
 export type CreatePaymentRequest = {
   productId: string
   amountUsdt: number
+  /** Client draft id — ignored by server; catalog + server orderId bind the payment */
   orderId: string
   successUrl?: string
   cancelUrl?: string
@@ -25,6 +29,10 @@ export type CreatePaymentResponse = {
   ok: boolean
   mode: PaymentsMode
   paymentId: string
+  orderId?: string
+  productId?: string
+  kind?: 'energy' | 'box'
+  amountUsdt?: number
   payAddress?: string
   payAmount?: number
   checkoutUrl?: string
@@ -68,7 +76,7 @@ export async function resolvePaymentsLive(): Promise<{
 /**
  * Create payment.
  * - ready → NOWPayments only (ok:false on failure — NO silent DEMO grant)
- * - !ready → DEMO mock invoice (Ya pagué path)
+ * - !ready → DEMO mock invoice (explicit Ya pagué path only; status never auto-paid)
  */
 export async function createUsdtPayment(req: CreatePaymentRequest): Promise<CreatePaymentResponse> {
   bustPaymentsConfigCache()
@@ -89,6 +97,9 @@ export async function createUsdtPayment(req: CreatePaymentRequest): Promise<Crea
     ok: true,
     mode: 'demo',
     paymentId: `demo_${req.orderId}`,
+    orderId: req.orderId,
+    productId: req.productId,
+    amountUsdt: req.amountUsdt,
     payAddress: 'TCaVaDemoUsdtPay111111111111111111',
     payAmount: req.amountUsdt,
     message: cfg.message
@@ -97,9 +108,20 @@ export async function createUsdtPayment(req: CreatePaymentRequest): Promise<Crea
   }
 }
 
-export async function getUsdtPaymentStatus(paymentId: string): Promise<'pending' | 'paid' | 'failed'> {
-  if (paymentId.startsWith('demo_')) return 'paid'
+/**
+ * HIGH: never treat demo_* as paid here.
+ * DEMO delivery is only via explicit Ya pagué when config.ready=false.
+ */
+export async function getUsdtPaymentStatus(paymentId: string): Promise<PaymentStatusResult> {
+  if (!paymentId || paymentId.startsWith('demo_')) {
+    return { status: 'pending', paid: false, message: 'demo_ never auto-paid' }
+  }
   return pollNowPaymentsStatus(paymentId)
+}
+
+/** Redeem HMAC grant from status → entitles client to apply product once */
+export async function redeemUsdtPayment(grantToken: string) {
+  return redeemUsdtGrant(grantToken)
 }
 
 const GRANTED_KEY = 'cava-usdt-granted-v1'
@@ -135,4 +157,5 @@ export const PAYMENTS_ENV_KEYS = [
   'NOWPAYMENTS_API_KEY',
   'NOWPAYMENTS_IPN_SECRET',
   'NOWPAYMENTS_IPN_URL',
+  'OPERATOR_EMAILS',
 ] as const

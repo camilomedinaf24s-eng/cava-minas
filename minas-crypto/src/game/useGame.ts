@@ -74,7 +74,6 @@ import {
 import {
   applyOperatorGifts,
   giftsFullyClaimed,
-  isOperatorSession,
   sanitizeDeployedIds,
 } from './gifts'
 import { defaultState, emptyDaily, loadState, saveState } from './storage'
@@ -1097,62 +1096,66 @@ export function useGame() {
     flash('Progreso reiniciado')
   }, [flash])
 
-  const claimOperatorGifts = useCallback(() => {
-    if (!isOperatorSession()) {
-      flash('Regalos solo para operador Andres Medina')
-      return false
-    }
-    let ok = false
-    setState((s) => {
-      const cur = accrue(s, Date.now())
-      if (giftsFullyClaimed(cur.operatorGiftsClaimed, cur.operatorGiftsGen ?? 0)) {
-        // Re-aplica si claim quedó a medias / sin cores 150 / sin deploy
-        const repaired = applyOperatorGifts(cur, Date.now())
-        const sameRoster =
-          repaired.miners.length === cur.miners.length &&
-          repaired.miners.every((m, i) => m.id === cur.miners[i]?.id && m.coreAttrs?.fuerza === 150)
-        if (
-          sameRoster &&
-          repaired.deployedMinerIds.join() === sanitizeDeployedIds(cur.deployedMinerIds, cur.miners).join() &&
-          (cur.ownedAxes ?? []).includes(6)
-        ) {
-          flash('Regalos ya reclamados')
-          return cur
+  /** Requires operatorAuthorized from /api/me/operator (Cursor identity) */
+  const claimOperatorGifts = useCallback(
+    (operatorAuthorized: boolean) => {
+      if (!operatorAuthorized) {
+        flash('Regalos solo para Andres Medina (Cursor identity)')
+        return false
+      }
+      let ok = false
+      setState((s) => {
+        const cur = accrue(s, Date.now())
+        if (giftsFullyClaimed(cur.operatorGiftsClaimed, cur.operatorGiftsGen ?? 0)) {
+          const repaired = applyOperatorGifts(cur, Date.now())
+          const sameRoster =
+            repaired.miners.length === cur.miners.length &&
+            repaired.miners.every((m, i) => m.id === cur.miners[i]?.id && m.coreAttrs?.fuerza === 150)
+          if (
+            sameRoster &&
+            repaired.deployedMinerIds.join() ===
+              sanitizeDeployedIds(cur.deployedMinerIds, cur.miners).join() &&
+            (cur.ownedAxes ?? []).includes(6)
+          ) {
+            flash('Regalos ya reclamados')
+            return cur
+          }
+          const next = {
+            ...repaired,
+            history: pushHistory(cur, {
+              id: uid(),
+              at: Date.now(),
+              amount: 0,
+              kind: 'gift',
+              note: 'Repair REGALO · 2× Mítico 150 + hacha 6',
+            }),
+          }
+          saveState(next)
+          flash('Regalos reparados · Mítico 150 ×2 en mina')
+          ok = true
+          return next
         }
-        const next = {
-          ...repaired,
+        const t = Date.now()
+        const granted = applyOperatorGifts(cur, t)
+        const next: GameState = {
+          ...granted,
           history: pushHistory(cur, {
             id: uid(),
-            at: Date.now(),
+            at: t,
             amount: 0,
             kind: 'gift',
-            note: 'Repair REGALO · 2× Mítico 150 + hacha 6',
+            note: '2 cajas REGALO · 2× Mítico 150 F/R/P + hacha 6 · Andres Medina',
           }),
         }
         saveState(next)
-        flash('Regalos reparados · Mítico 150 ×2 en mina')
+        flash('¡2 cajas REGALO · Mítico 150 ×2!')
         ok = true
         return next
-      }
-      const t = Date.now()
-      const granted = applyOperatorGifts(cur, t)
-      const next: GameState = {
-        ...granted,
-        history: pushHistory(cur, {
-          id: uid(),
-          at: t,
-          amount: 0,
-          kind: 'gift',
-          note: '2 cajas REGALO · 2× Mítico 150 F/R/P + hacha 6 · Andres Medina',
-        }),
-      }
-      saveState(next)
-      flash('¡2 cajas REGALO · Mítico 150 ×2!')
-      ok = true
-      return next
-    })
-    return ok
-  }, [flash])
+      })
+      return ok
+    },
+    [flash],
+  )
 
   const crew = useMemo(() => deployedMiners(live), [live])
 

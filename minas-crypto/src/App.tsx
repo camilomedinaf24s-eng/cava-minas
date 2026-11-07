@@ -50,11 +50,13 @@ import { BLOCK_META, LAYER_META, MAX_MINERS } from './game/mineField'
 import { yourRank, weeklyBoard } from './game/ranking'
 import { SEASON, SEASON_TRACK, SKINS, type SkinId } from './game/season'
 import { STRIPE_PRODUCTS, type StripeProductId } from './game/stripeMock'
-import { OPERATOR_GIFTS, isOperatorSession } from './game/gifts'
+import { OPERATOR_GIFTS } from './game/gifts'
+import { fetchOperatorStatus } from './game/operatorApi'
 import {
   createUsdtPayment,
   getUsdtPaymentStatus,
   markPaymentGranted,
+  redeemUsdtPayment,
   resolvePaymentsLive,
   wasPaymentGranted,
 } from './game/paymentsApi'
@@ -140,12 +142,21 @@ export default function App() {
   const [usdtPoll, setUsdtPoll] = useState<'idle' | 'pending' | 'paid' | 'failed'>('idle')
   const [giftOpen, setGiftOpen] = useState(false)
   const [giftOpened, setGiftOpened] = useState(false)
+  const [isOperator, setIsOperator] = useState(false)
 
   useEffect(() => {
-    if (!g.operatorGiftsClaimed && isOperatorSession()) {
-      const id = window.setTimeout(() => setGiftOpen(true), 600)
-      return () => window.clearTimeout(id)
+    let cancelled = false
+    void fetchOperatorStatus().then((st) => {
+      if (cancelled) return
+      setIsOperator(st.operator)
+      if (st.operator && !g.operatorGiftsClaimed) {
+        window.setTimeout(() => setGiftOpen(true), 600)
+      }
+    })
+    return () => {
+      cancelled = true
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- open once after identity
   }, [g.operatorGiftsClaimed])
 
   useEffect(() => {
@@ -158,13 +169,17 @@ export default function App() {
     }
   }, [])
 
-  const grantUsdtInvoice = (inv: UsdtInvoice) => {
-    const pid = inv.paymentId || inv.id
+  const grantUsdtProduct = (opts: {
+    paymentId: string
+    productId: string
+    kind: 'energy' | 'box' | string
+  }) => {
+    const pid = opts.paymentId
     if (wasPaymentGranted(pid)) return
     markPaymentGranted(pid)
-    if (inv.kind === 'energy') g.buyEnergy(inv.productId as EnergyPackId, 'usd')
-    else if (inv.kind === 'box') {
-      g.buyBox(inv.productId as BoxId, 'usd')
+    if (opts.kind === 'energy') g.buyEnergy(opts.productId as EnergyPackId, 'usd')
+    else if (opts.kind === 'box') {
+      g.buyBox(opts.productId as BoxId, 'usd')
       setNav('shop')
     }
   }
@@ -203,6 +218,7 @@ export default function App() {
         Boolean(pay.payAddress || pay.checkoutUrl)
       const next: UsdtInvoice = {
         ...draft,
+        id: pay.orderId || draft.id,
         paymentId: pay.paymentId,
         address: pay.payAddress || (live ? '' : draft.address),
         amountUsdt: pay.payAmount ?? draft.amountUsdt,
@@ -243,36 +259,69 @@ export default function App() {
     )
   }
 
-  /** DEMO only — live mode grants via status poll / IPN */
+  /**
+   * DEMO only when config.ready=false — explicit Ya pagué.
+   * Never used when keys are live; demo_* status never auto-pays.
+   */
   const confirmUsdtDemo = async () => {
     if (!modal || modal.type !== 'usdt' || usdtBusy) return
     if (modal.invoice.live) return
-    setUsdtBusy(true)
     const inv = modal.invoice
-    try {
-      await createUsdtPayment({
-        productId: inv.productId,
-        amountUsdt: inv.amountUsdt,
-        orderId: inv.id,
+    if (!inv.paymentId?.startsWith('demo_')) return
+    // Re-check host: refuse DEMO grant if keys went live
+    const liveCheck = await resolvePaymentsLive()
+    if (liveCheck.ready) {
+      setUsdtLive(true)
+      setModal({
+        type: 'usdt',
+        invoice: {
+          ...inv,
+          live: false,
+          paymentId: '',
+          status: 'expired',
+          message: 'Keys live · DEMO grant blocked · crea invoice NOWPayments',
+        },
       })
-      grantUsdtInvoice(inv)
+      return
+    }
+    setUsdtBusy(true)
+    try {
+      grantUsdtProduct({
+        paymentId: inv.paymentId,
+        productId: inv.productId,
+        kind: inv.kind,
+      })
       setModal(null)
     } finally {
       setUsdtBusy(false)
     }
   }
 
-  // Poll NOWPayments status while live invoice open
+  // Poll NOWPayments → redeem HMAC grant → deliver item
   useEffect(() => {
     if (!modal || modal.type !== 'usdt' || !modal.invoice.live || !modal.invoice.paymentId) return
+    if (modal.invoice.paymentId.startsWith('demo_')) return
     const paymentId = modal.invoice.paymentId
+    const fallbackProductId = modal.invoice.productId
+    const fallbackKind = modal.invoice.kind
     let stopped = false
     const tick = async () => {
       const st = await getUsdtPaymentStatus(paymentId)
       if (stopped) return
-      setUsdtPoll(st)
-      if (st === 'paid') {
-        grantUsdtInvoice(modal.invoice)
+      setUsdtPoll(st.status)
+      if (st.paid && st.grantToken) {
+        const redeemed = await redeemUsdtPayment(st.grantToken)
+        if (stopped) return
+        if (!redeemed.ok) {
+          setUsdtPoll('pending')
+          return
+        }
+        grantUsdtProduct({
+          paymentId: redeemed.paymentId || paymentId,
+          productId: redeemed.productId || fallbackProductId,
+          kind: redeemed.kind || fallbackKind,
+        })
+        setUsdtPoll('paid')
         setModal(null)
       }
     }
@@ -351,7 +400,7 @@ export default function App() {
               Operador
               <strong>{PLAYER}</strong>
             </div>
-            {!g.operatorGiftsClaimed && isOperatorSession() && (
+            {!g.operatorGiftsClaimed && isOperator && (
               <button type="button" className="gift-chip" onClick={() => setGiftOpen(true)}>
                 2 cajas REGALO
               </button>
@@ -1043,7 +1092,7 @@ export default function App() {
       </AnimatePresence>
 
       <AnimatePresence>
-        {giftOpen && !g.operatorGiftsClaimed && (
+        {giftOpen && isOperator && !g.operatorGiftsClaimed && (
           <motion.div
             className="modal-backdrop gift-backdrop"
             initial={{ opacity: 0 }}
@@ -1059,7 +1108,7 @@ export default function App() {
               <p className="gift-kicker">Operador · {PLAYER}</p>
               <h3>2 cajas REGALO</h3>
               <p className="gift-lead">
-                Ambas Minero Mítico · F/R/P 150 + hacha 6 · reclamo único al empezar en vivo
+                Solo Andres Medina (Cursor identity) · Minero Mítico · F/R/P 150 + hacha 6 · una vez
               </p>
               <div className={`gift-row ${giftOpened ? 'opened' : ''}`}>
                 {OPERATOR_GIFTS.map((gf, i) => (
@@ -1088,9 +1137,15 @@ export default function App() {
                 onClick={() => {
                   setGiftOpened(true)
                   window.setTimeout(() => {
-                    g.claimOperatorGifts()
-                    setGiftOpen(false)
-                    setNav('miners')
+                    void fetchOperatorStatus(true).then((st) => {
+                      if (!st.operator) {
+                        setGiftOpen(false)
+                        return
+                      }
+                      g.claimOperatorGifts(true)
+                      setGiftOpen(false)
+                      setNav('miners')
+                    })
                   }, 520)
                 }}
               >

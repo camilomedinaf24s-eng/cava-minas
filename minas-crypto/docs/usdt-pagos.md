@@ -11,6 +11,8 @@
 | POST | `https://cava.apps.grok.bot/api/payments/usdt/create` |
 | GET | `https://cava.apps.grok.bot/api/payments/usdt/status?id=` |
 | POST | `https://cava.apps.grok.bot/api/payments/usdt/ipn` |
+| POST | `https://cava.apps.grok.bot/api/payments/usdt/redeem` |
+| GET | `https://cava.apps.grok.bot/api/me/operator` |
 
 IPN callback in NOWPayments dashboard:
 
@@ -31,6 +33,9 @@ https://cava.apps.grok.bot/api/payments/usdt/ipn
 3. When `ready`, shop shows **USDT LIVE**; Pagar creates a real NP invoice (address / checkout).
 4. Create failure → error, **no** “Ya pagué” grant.
 5. DEMO “Ya pagué” only when `ready:false` (no keys / no routes).
+6. `demo_*` status is **never** `paid` while keys are live.
+7. Server assigns `cava_*` orderId; binds catalog product+amount; status/IPN require match; client redeems HMAC `grantToken`.
+8. Operator gifts: only Andres Medina via Cursor identity (`GET /api/me/operator`).
 
 Optional bake: `NEXT_PUBLIC_PAYMENTS_MODE=nowpayments` (auto-LIVE still follows `config.ready`).
 

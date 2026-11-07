@@ -2,14 +2,16 @@ import {
   getIpnSecret,
   isPaidStatus,
   json,
-  markPaid,
+  lookupOrder,
+  markOrderPaid,
+  rememberOrder,
+  resolveProduct,
   verifyNowPaymentsIpn,
 } from '../_shared'
 
 /**
  * POST /api/payments/usdt/ipn
- * NOWPayments IPN callback — verify x-nowpayments-sig (HMAC-SHA512).
- * Grant path: mark paid; client polls status then delivers ítem locally.
+ * Verify signature; mark paid only when product+amount match bound order.
  */
 export async function POST(request: Request) {
   const secret = getIpnSecret()
@@ -40,18 +42,49 @@ export async function POST(request: Request) {
   const orderId = String(body.order_id ?? '')
   const desc = String(body.order_description ?? '')
   const productMatch = /·\s*([a-z_]+)\s*$/i.exec(desc)
-  const productId = productMatch?.[1] || String(body.order_description || '')
+  const productId = productMatch?.[1] || ''
+  const catalog = productId ? resolveProduct(productId) : null
+  const priceAmount =
+    typeof body.price_amount === 'number' ? Number(body.price_amount) : catalog?.amountUsdt
 
-  if (isPaidStatus(paymentStatus)) {
-    if (orderId) markPaid(orderId, productId, paymentId)
-    if (paymentId) markPaid(paymentId, productId, paymentId)
+  if (!isPaidStatus(paymentStatus)) {
+    return json({ ok: true, received: true, paid: false })
   }
 
-  // Never log secrets or full payment payloads
+  if (!catalog || !orderId.startsWith('cava_') || !paymentId) {
+    return json({ ok: false, message: 'IPN missing bound order/product' }, 400)
+  }
+
+  let rec = markOrderPaid({
+    orderId,
+    paymentId,
+    productId: catalog.productId,
+    amountUsdt: priceAmount,
+  })
+
+  if (!rec) {
+    // First sight of order on this instance — only if amount matches catalog
+    if (typeof priceAmount === 'number' && Math.abs(priceAmount - catalog.amountUsdt) > 0.05) {
+      return json({ ok: false, message: 'IPN amount mismatch' }, 400)
+    }
+    rememberOrder({
+      orderId,
+      paymentId,
+      productId: catalog.productId,
+      kind: catalog.kind,
+      amountUsdt: catalog.amountUsdt,
+      status: 'paid',
+      createdAt: Date.now(),
+    })
+    rec = lookupOrder(orderId)
+  }
+
   return json({
     ok: true,
     received: true,
-    paid: isPaidStatus(paymentStatus),
-    paymentId: paymentId || undefined,
+    paid: Boolean(rec),
+    paymentId,
+    orderId,
+    productId: catalog.productId,
   })
 }

@@ -182,14 +182,16 @@ export function loadState(): GameState {
       operatorGiftsClaimed: Boolean(parsed.operatorGiftsClaimed),
     }
 
-    // Si ya reclamó (gen≥2): siempre re-stamp 150 + nombre Mítico + deploy limpio (sin wipe)
+    // Repair ONLY if this save already claimed (localStorage). Never auto-claim for visitors.
     if (state.operatorGiftsClaimed || (state.operatorGiftsGen ?? 0) >= 2 || needsOperatorGiftRepair(state)) {
       state = applyOperatorGifts(state, now)
     } else {
+      // Non-operators: do not invent gifts from PLAYER brand
       state = ensureGiftsDeployable(state)
       state = {
         ...state,
-        operatorGiftsClaimed: giftsFullyClaimed(state.operatorGiftsClaimed, state.operatorGiftsGen ?? 0),
+        operatorGiftsClaimed: false,
+        operatorGiftsGen: state.operatorGiftsGen ?? 0,
       }
     }
     return state

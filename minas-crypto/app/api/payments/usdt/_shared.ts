@@ -1,5 +1,6 @@
 /**
- * Shared NOWPayments helpers — server only (publish-app functions).
+ * Shared NOWPayments helpers — server only (publish-app / Next route handlers).
+ * Orders bind productId+amount; paid grants are HMAC-signed tokens.
  */
 
 export const NP_API = 'https://api.nowpayments.io/v1'
@@ -20,6 +21,22 @@ export const PRODUCT_CATALOG: Record<string, CatalogProduct> = {
   legendary: { productId: 'legendary', kind: 'box', amountUsdt: 14.99, label: 'Caja legendaria' },
 }
 
+export type OrderRecord = {
+  orderId: string
+  paymentId: string
+  productId: string
+  kind: 'energy' | 'box'
+  amountUsdt: number
+  status: 'pending' | 'paid' | 'failed'
+  createdAt: number
+  grantIssued?: boolean
+}
+
+/** In-memory order registry (best-effort on serverless; grant token is the durable proof) */
+const ordersById = new Map<string, OrderRecord>()
+const ordersByPayment = new Map<string, OrderRecord>()
+const redeemedGrants = new Set<string>()
+
 export function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
@@ -39,24 +56,32 @@ function readEnv(...names: string[]): string | undefined {
 }
 
 export function getApiKey(): string | undefined {
-  const k = readEnv('NOWPAYMENTS_API_KEY', 'NOWPAYMENTS_KEY', 'NOW_PAYMENTS_API_KEY')
+  const k = readEnv('NOWPAYMENTS_API_KEY', 'NOWPAYMENTS_KEY')
   return k && k.length > 8 ? k : undefined
 }
 
 export function getIpnSecret(): string | undefined {
-  const k = readEnv('NOWPAYMENTS_IPN_SECRET', 'NOWPAYMENTS_IPN', 'NOW_PAYMENTS_IPN_SECRET')
+  const k = readEnv('NOWPAYMENTS_IPN_SECRET', 'NOWPAYMENTS_IPN')
   return k && k.length > 4 ? k : undefined
+}
+
+/** Prefer IPN secret for HMAC grants; fall back to API key */
+export function getSigningSecret(): string | undefined {
+  return getIpnSecret() || getApiKey()
 }
 
 export function secretsReady(): boolean {
   return Boolean(getApiKey())
 }
 
-export function resolveProduct(productId: string, amountUsdt?: number): CatalogProduct | null {
-  const p = PRODUCT_CATALOG[productId]
-  if (!p) return null
-  if (typeof amountUsdt === 'number' && Math.abs(amountUsdt - p.amountUsdt) > 0.02) return p
-  return p
+export function resolveProduct(productId: string): CatalogProduct | null {
+  return PRODUCT_CATALOG[productId] ?? null
+}
+
+export function newServerOrderId(): string {
+  const rand = crypto.getRandomValues(new Uint8Array(8))
+  const hex = [...rand].map((b) => b.toString(16).padStart(2, '0')).join('')
+  return `cava_${Date.now().toString(36)}_${hex}`
 }
 
 export function ipnCallbackUrl(request: Request): string {
@@ -88,6 +113,22 @@ export async function hmacSha512Hex(secret: string, message: string): Promise<st
   )
   const sig = await crypto.subtle.sign('HMAC', key, enc.encode(message))
   return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, '0')).join('')
+}
+
+export async function hmacSha256B64Url(secret: string, message: string): Promise<string> {
+  const enc = new TextEncoder()
+  const key = await crypto.subtle.importKey(
+    'raw',
+    enc.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  )
+  const sig = await crypto.subtle.sign('HMAC', key, enc.encode(message))
+  return btoa(String.fromCharCode(...new Uint8Array(sig)))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '')
 }
 
 export async function verifyNowPaymentsIpn(
@@ -122,13 +163,114 @@ export function normalizeStatus(status: string | undefined): 'pending' | 'paid' 
   return 'pending'
 }
 
-const paidOrders = new Map<string, { productId: string; at: number; paymentId: string }>()
-
-export function markPaid(orderId: string, productId: string, paymentId: string): void {
-  paidOrders.set(String(orderId), { productId, paymentId, at: Date.now() })
-  paidOrders.set(`pay:${paymentId}`, { productId, paymentId, at: Date.now() })
+export function rememberOrder(rec: OrderRecord): void {
+  ordersById.set(rec.orderId, rec)
+  if (rec.paymentId) ordersByPayment.set(rec.paymentId, rec)
 }
 
-export function lookupPaid(id: string): { productId: string; at: number; paymentId: string } | null {
-  return paidOrders.get(id) || paidOrders.get(`pay:${id}`) || null
+export function lookupOrder(id: string): OrderRecord | null {
+  return ordersById.get(id) || ordersByPayment.get(id) || null
+}
+
+export function attachPaymentId(orderId: string, paymentId: string): OrderRecord | null {
+  const rec = ordersById.get(orderId)
+  if (!rec) return null
+  rec.paymentId = paymentId
+  ordersByPayment.set(paymentId, rec)
+  return rec
+}
+
+/** Mark paid only if productId (+ optional amount) match the stored order */
+export function markOrderPaid(opts: {
+  orderId?: string
+  paymentId?: string
+  productId: string
+  amountUsdt?: number
+}): OrderRecord | null {
+  const rec =
+    (opts.orderId ? ordersById.get(opts.orderId) : null) ||
+    (opts.paymentId ? ordersByPayment.get(opts.paymentId) : null)
+  if (!rec) return null
+  if (rec.productId !== opts.productId) return null
+  if (typeof opts.amountUsdt === 'number' && Math.abs(opts.amountUsdt - rec.amountUsdt) > 0.05) {
+    return null
+  }
+  rec.status = 'paid'
+  if (opts.paymentId && !rec.paymentId) {
+    rec.paymentId = opts.paymentId
+    ordersByPayment.set(opts.paymentId, rec)
+  }
+  return rec
+}
+
+export type GrantPayload = {
+  v: 1
+  orderId: string
+  paymentId: string
+  productId: string
+  kind: 'energy' | 'box'
+  amountUsdt: number
+  exp: number
+}
+
+function b64urlJson(obj: unknown): string {
+  return btoa(JSON.stringify(obj)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+
+function fromB64urlJson<T>(s: string): T | null {
+  try {
+    const pad = s.length % 4 === 0 ? '' : '='.repeat(4 - (s.length % 4))
+    const raw = atob(s.replace(/-/g, '+').replace(/_/g, '/') + pad)
+    return JSON.parse(raw) as T
+  } catch {
+    return null
+  }
+}
+
+export async function issueGrantToken(rec: OrderRecord): Promise<string | null> {
+  const secret = getSigningSecret()
+  if (!secret || rec.status !== 'paid' || !rec.paymentId) return null
+  const payload: GrantPayload = {
+    v: 1,
+    orderId: rec.orderId,
+    paymentId: rec.paymentId,
+    productId: rec.productId,
+    kind: rec.kind,
+    amountUsdt: rec.amountUsdt,
+    exp: Date.now() + 1000 * 60 * 60 * 6,
+  }
+  const body = b64urlJson(payload)
+  const sig = await hmacSha256B64Url(secret, body)
+  rec.grantIssued = true
+  return `${body}.${sig}`
+}
+
+export async function verifyAndConsumeGrant(
+  token: string,
+): Promise<{ ok: true; payload: GrantPayload } | { ok: false; message: string }> {
+  const secret = getSigningSecret()
+  if (!secret) return { ok: false, message: 'No signing secret' }
+  const [body, sig] = token.split('.')
+  if (!body || !sig) return { ok: false, message: 'Malformed grant' }
+  const expected = await hmacSha256B64Url(secret, body)
+  if (expected.length !== sig.length) return { ok: false, message: 'Bad grant sig' }
+  let diff = 0
+  for (let i = 0; i < expected.length; i++) diff |= expected.charCodeAt(i) ^ sig.charCodeAt(i)
+  if (diff !== 0) return { ok: false, message: 'Bad grant sig' }
+  const payload = fromB64urlJson<GrantPayload>(body)
+  if (!payload || payload.v !== 1) return { ok: false, message: 'Bad grant payload' }
+  if (payload.exp < Date.now()) return { ok: false, message: 'Grant expired' }
+  if (!PRODUCT_CATALOG[payload.productId]) return { ok: false, message: 'Unknown product' }
+  if (Math.abs(PRODUCT_CATALOG[payload.productId].amountUsdt - payload.amountUsdt) > 0.02) {
+    return { ok: false, message: 'Amount mismatch' }
+  }
+  if (redeemedGrants.has(token)) return { ok: false, message: 'Grant already redeemed' }
+  // Bind to remembered order when present
+  const rec = lookupOrder(payload.orderId) || lookupOrder(payload.paymentId)
+  if (rec) {
+    if (rec.productId !== payload.productId) return { ok: false, message: 'Order product mismatch' }
+    if (rec.status !== 'paid') return { ok: false, message: 'Order not paid' }
+  }
+  redeemedGrants.add(token)
+  return { ok: true, payload }
 }
