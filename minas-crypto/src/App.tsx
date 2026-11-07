@@ -62,6 +62,7 @@ import {
 } from './game/paymentsApi'
 import {
   createUsdtInvoice,
+  formatPayAmount,
   formatUsdt,
   type UsdtInvoice,
 } from './game/usdtPay'
@@ -211,18 +212,40 @@ export default function App() {
         })
         return
       }
+      // Live only when we have a real copyable pay_address (never blank NP hosted page)
+      const hasAddr = Boolean(pay.payAddress && pay.payAddress.length > 8)
       const live =
         pay.mode === 'nowpayments' &&
         Boolean(pay.paymentId) &&
         !pay.paymentId.startsWith('demo_') &&
-        Boolean(pay.payAddress || pay.checkoutUrl)
+        hasAddr
+      if (pay.mode === 'nowpayments' && !hasAddr) {
+        setUsdtLive(false)
+        setModal({
+          type: 'usdt',
+          invoice: {
+            ...draft,
+            live: false,
+            paymentId: '',
+            address: '',
+            message: pay.message || 'Sin dirección USDT · no uses checkout vacío',
+            status: 'expired',
+            gatewayPath: '/api/payments/usdt/create',
+          },
+        })
+        return
+      }
       const next: UsdtInvoice = {
         ...draft,
         id: pay.orderId || draft.id,
         paymentId: pay.paymentId,
-        address: pay.payAddress || (live ? '' : draft.address),
+        address: pay.payAddress || draft.address,
         amountUsdt: pay.payAmount ?? draft.amountUsdt,
-        checkoutUrl: pay.checkoutUrl,
+        network: (pay.network as UsdtInvoice['network']) || draft.network,
+        payCurrency: pay.payCurrency,
+        payinExtraId: pay.payinExtraId,
+        // Prefer in-app address; optional checkout only if address present
+        checkoutUrl: undefined,
         live,
         message: pay.message,
         status: 'awaiting',
@@ -1338,14 +1361,19 @@ export default function App() {
                         : 'Pagar con USDT · DEMO'}
                   </h3>
                   <p>
-                    {modal.invoice.label} · <strong>{formatUsdt(modal.invoice.amountUsdt)}</strong>
+                    {modal.invoice.label} ·{' '}
+                    <strong>
+                      {modal.invoice.live
+                        ? formatPayAmount(modal.invoice.amountUsdt, modal.invoice.payCurrency)
+                        : formatUsdt(modal.invoice.amountUsdt)}
+                    </strong>
                   </p>
                   <p className="pay-demo-note">
                     {modal.invoice.status === 'expired'
                       ? modal.invoice.message ||
                         'Sin grant. Revisa NOWPayments (moneda/IPN/clave) y republish.'
                       : modal.invoice.live
-                        ? 'NOWPayments · USDT · ítems de juego · sin retiros BTC'
+                        ? `Envía exacto a la dirección · red ${modal.invoice.network} · sin retiros BTC`
                         : 'DEMO · sin on-chain · sin retiros BTC · ítems de juego solamente'}
                   </p>
                   <div className="usdt-invoice" id="usdt-invoice">
@@ -1353,36 +1381,43 @@ export default function App() {
                       <>
                         <div>
                           Red <b>{modal.invoice.network}</b>
+                          {modal.invoice.payCurrency
+                            ? ` · ${(modal.invoice.payCurrency || '').toUpperCase()}`
+                            : ''}
                           {modal.invoice.live && usdtPoll !== 'idle' ? ` · ${usdtPoll}` : ''}
+                        </div>
+                        <div className="usdt-pay-amount" style={{ margin: '6px 0', fontWeight: 600 }}>
+                          Monto{' '}
+                          <b>
+                            {formatPayAmount(
+                              modal.invoice.amountUsdt,
+                              modal.invoice.payCurrency || 'USDT',
+                            )}
+                          </b>
                         </div>
                         <div
                           className="usdt-addr"
                           title={modal.invoice.live ? 'Dirección NOWPayments' : 'Dirección mock DEMO'}
                         >
                           {usdtBusy && !modal.invoice.paymentId
-                            ? 'Creando invoice…'
+                            ? 'Creando pago…'
                             : modal.invoice.address || '—'}
                         </div>
+                        {modal.invoice.payinExtraId && (
+                          <p className="pay-demo-note">
+                            Memo / tag: <code>{modal.invoice.payinExtraId}</code>
+                          </p>
+                        )}
                         <button
                           type="button"
-                          className="btn btn-ghost btn-wide"
+                          className="btn btn-primary btn-wide"
+                          id="copy-usdt-addr"
                           disabled={!modal.invoice.address}
                           onClick={() => void navigator.clipboard?.writeText(modal.invoice.address)}
                         >
                           {modal.invoice.live ? 'Copiar dirección USDT' : 'Copiar dirección DEMO'}
                         </button>
                       </>
-                    )}
-                    {modal.invoice.checkoutUrl && (
-                      <a
-                        className="btn btn-primary btn-wide"
-                        href={modal.invoice.checkoutUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        style={{ marginTop: 8, display: 'inline-block', textAlign: 'center' }}
-                      >
-                        Abrir checkout NOWPayments
-                      </a>
                     )}
                     <code className="usdt-path">{modal.invoice.gatewayPath}</code>
                     {modal.invoice.message && <p className="pay-demo-note">{modal.invoice.message}</p>}

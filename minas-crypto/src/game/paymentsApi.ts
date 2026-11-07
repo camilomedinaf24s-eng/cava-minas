@@ -35,6 +35,9 @@ export type CreatePaymentResponse = {
   amountUsdt?: number
   payAddress?: string
   payAmount?: number
+  payCurrency?: string
+  network?: string
+  payinExtraId?: string
   checkoutUrl?: string
   message: string
 }

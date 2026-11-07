@@ -155,6 +155,8 @@ export async function createNowPaymentsInvoice(
       pay_address?: string
       pay_amount?: number
       payment_id?: string
+      pay_currency?: string
+      payin_extra_id?: string
       message?: string
       error?: string
       ok?: boolean
@@ -176,12 +178,22 @@ export async function createNowPaymentsInvoice(
       }
     }
     const paymentId = String(data.paymentId ?? data.payment_id ?? '')
+    const payAddress = String(data.payAddress ?? data.pay_address ?? '').trim()
     if (!paymentId || paymentId.startsWith('demo_')) {
       return {
         ok: false,
         mode: 'nowpayments',
         paymentId: '',
         message: 'Create sin paymentId real',
+      }
+    }
+    // In-app copy requires address — reject hosted-only / blank widget responses
+    if (!payAddress) {
+      return {
+        ok: false,
+        mode: 'nowpayments',
+        paymentId: '',
+        message: data.message || 'Create sin pay_address · no uses checkout vacío',
       }
     }
     return {
@@ -192,10 +204,13 @@ export async function createNowPaymentsInvoice(
       productId: data.productId,
       kind: data.kind,
       amountUsdt: data.amountUsdt,
-      payAddress: data.payAddress ?? data.pay_address,
+      payAddress,
       payAmount: data.payAmount ?? data.pay_amount,
+      payCurrency: data.payCurrency ?? data.pay_currency,
+      network: data.network,
+      payinExtraId: data.payinExtraId ?? data.payin_extra_id,
       checkoutUrl: data.checkoutUrl,
-      message: data.message ?? 'Invoice NOWPayments creada',
+      message: data.message ?? 'Pago USDT listo · copia la dirección',
     }
   } catch {
     return {

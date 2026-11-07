@@ -6,6 +6,8 @@
 
 export type UsdtProductKind = 'energy' | 'box' | 'starter' | 'season'
 
+export type UsdtNetwork = 'TRC20' | 'ERC20' | 'Polygon' | 'BEP20' | 'USDT'
+
 export type UsdtInvoice = {
   id: string
   kind: UsdtProductKind
@@ -13,13 +15,15 @@ export type UsdtInvoice = {
   label: string
   amountUsdt: number
   address: string
-  network: 'TRC20' | 'ERC20' | 'Polygon'
+  network: UsdtNetwork
   status: 'awaiting' | 'confirming' | 'paid' | 'expired'
   createdAt: number
   gatewayPath: string
   /** NOWPayments payment_id (live) */
   paymentId?: string
   checkoutUrl?: string
+  payCurrency?: string
+  payinExtraId?: string
   live?: boolean
   message?: string
 }
@@ -58,4 +62,10 @@ export function createUsdtInvoice(input: {
 
 export function formatUsdt(n: number): string {
   return `${n.toFixed(2)} USDT`
+}
+
+export function formatPayAmount(amount: number, payCurrency?: string): string {
+  const c = (payCurrency || 'USDT').toUpperCase()
+  const fixed = amount >= 1 ? amount.toFixed(2) : amount.toFixed(6)
+  return `${fixed} ${c}`
 }
