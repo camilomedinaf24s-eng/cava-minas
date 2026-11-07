@@ -8,7 +8,7 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
-# Next distDir (publish-app Output Directory name)
+# leftover Vite / mistaken distDir experiments
 dist
 dist-ssr
 *.local
@@ -24,7 +24,6 @@ dist-ssr
 *.sln
 *.sw?
 
-# legacy Next default (unused — distDir is dist)
+# Next default distDir
 .next
 out
-

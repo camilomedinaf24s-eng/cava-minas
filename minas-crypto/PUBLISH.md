@@ -6,16 +6,16 @@ Vite-only static deploys **do not** run API routes; that was why checkout stayed
 
 ## Build
 
-`next.config.ts` sets `distDir: 'dist'` so publish-app finds Output Directory `dist` after `next build`. That folder is the Next server build (not a static export) — API routes still run via `next start`.
+Default Next `distDir` is **`.next`** (do not set `distDir: 'dist'` — publish-app Next host looks for `.next`). `vercel.json` marks `framework: nextjs`. API routes run via `next start`.
 
 ```bash
 cd minas-crypto
 npm install
-npm run build   # writes dist/ (BUILD_ID, server/, static/, …)
+npm run build   # writes .next/
 npm run start   # :4173
 ```
 
-Dev: `npm run dev` (:5173). `vercel.json` marks `framework: nextjs`.
+Dev: `npm run dev` (:5173).
 
 ## Secrets / env
 

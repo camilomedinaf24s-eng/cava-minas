@@ -28,7 +28,7 @@
     "src/**/*.ts",
     "src/**/*.tsx",
     "cursor/**/*.ts",
-    "dist/types/**/*.ts"
+    ".next/types/**/*.ts"
   ],
-  "exclude": ["node_modules", "_legacy-vite"]
+  "exclude": ["node_modules", "_legacy-vite", "dist"]
 }
