@@ -41,7 +41,7 @@ import {
   REFERRAL_REWARD_MINE,
   isValidReferralCode,
 } from './referrals'
-import { weekKey } from './ranking'
+import { monthKey, prizeForPlace, weekKey, type MonthlyPrizePlace } from './ranking'
 import {
   SEASON,
   SEASON_TRACK,
@@ -76,7 +76,7 @@ import {
   giftsFullyClaimed,
   sanitizeDeployedIds,
 } from './gifts'
-import { defaultState, emptyDaily, loadState, saveState } from './storage'
+import { defaultState, emptyDaily, loadState, saveState, settleMonthIfNeeded } from './storage'
 import type { ClaimRecord, GameState } from './types'
 
 function uid(): string {
@@ -122,7 +122,8 @@ export function computeRate(state: GameState, now: number): number {
 }
 
 function accrue(state: GameState, now: number): GameState {
-  let s = ensureDaily(state, now)
+  const minersCount = (state.deployedMinerIds?.length || state.miners.length || 1)
+  let s = settleMonthIfNeeded(ensureDaily(state, now), now, minersCount)
   const elapsedMs = Math.max(0, now - s.lastTickAt)
   if (elapsedMs < 50) return s
 
@@ -218,6 +219,9 @@ export function useGame() {
             const wk = weekKey(t)
             const weekMined =
               (next.weekKey === wk ? next.weekMined || 0 : 0) + (result.gained || 0)
+            const mk = monthKey(t)
+            const monthMined =
+              (next.monthKey === mk ? next.monthMined || 0 : 0) + (result.gained || 0)
             const seasonXp = (next.season?.xp || 0) + Math.floor(result.gained * 2)
             next = {
               ...next,
@@ -227,6 +231,8 @@ export function useGame() {
               minedTotal: (next.minedTotal || 0) + result.gained,
               weekKey: wk,
               weekMined,
+              monthKey: mk,
+              monthMined,
               season: next.season
                 ? { ...next.season, xp: seasonXp }
                 : { seasonId: SEASON.id, xp: seasonXp, premium: false, claimedFree: [], claimedPremium: [], ownedSkins: ['default'], equippedSkin: 'default' },
@@ -1096,6 +1102,136 @@ export function useGame() {
     flash('Progreso reiniciado')
   }, [flash])
 
+  const claimMonthlyPrize = useCallback(() => {
+    setState((s) => {
+      const t = Date.now()
+      const cur = settleMonthIfNeeded(
+        accrue(s, t),
+        t,
+        s.deployedMinerIds?.length || s.miners.length || 1,
+      )
+      const pending = cur.pendingMonthlyPrize
+      if (!pending) {
+        flash('No hay premio mensual pendiente')
+        return cur
+      }
+      const prize = prizeForPlace(pending.place)
+      if (!prize) {
+        flash('Premio inválido')
+        return cur
+      }
+      const histIdx = cur.monthlyWinnersHistory.findIndex((h) => h.monthKey === pending.monthKey)
+      if (histIdx < 0) {
+        flash('Mes no encontrado en historial')
+        return cur
+      }
+      const rec = cur.monthlyWinnersHistory[histIdx]
+      const slot = rec.slots.find((sl) => sl.you && sl.place === pending.place)
+      if (!slot || slot.claimed) {
+        flash(slot?.claimed ? 'Premio ya reclamado' : 'No calificas para este premio')
+        return cur
+      }
+
+      let next: GameState = {
+        ...cur,
+        balance: cur.balance + prize.mine,
+        pendingMonthlyPrize: null,
+        monthlyWinnersHistory: cur.monthlyWinnersHistory.map((h, i) =>
+          i !== histIdx
+            ? h
+            : {
+                ...h,
+                slots: h.slots.map((sl) =>
+                  sl.you && sl.place === pending.place ? { ...sl, claimed: true } : sl,
+                ),
+              },
+        ),
+        history: pushHistory(cur, {
+          id: uid(),
+          at: t,
+          amount: prize.mine,
+          kind: 'monthly_prize',
+          note: `${prize.title} · ${pending.monthKey} · nota USDT $${prize.usdtNoteUsd} (operador)`,
+        }),
+      }
+
+      const pack = getEnergyPack(prize.energyPackId)
+      next = {
+        ...next,
+        miners: next.miners.map((m) => ({
+          ...m,
+          maxEnergy: Math.max(m.maxEnergy || MAX_ENERGY, pack.maxEnergy),
+          energy: pack.maxEnergy,
+        })),
+      }
+
+      const skins = next.season?.ownedSkins ?? ['default']
+      if (!skins.includes(prize.skinId)) {
+        next = {
+          ...next,
+          season: {
+            ...next.season!,
+            ownedSkins: [...skins, prize.skinId],
+            equippedSkin: prize.skinId,
+          },
+        }
+      }
+
+      if (next.miners.length < MAX_MINERS) {
+        const rarity = rollRarityFromBox(prize.boxId)
+        const minerNew = createMiner(rarity, t)
+        next = {
+          ...next,
+          miners: [minerNew, ...next.miners].slice(0, MAX_MINERS),
+          deployedMinerIds: [...(next.deployedMinerIds ?? []), minerNew.id].slice(0, MAX_MINERS),
+          lastBoxId: prize.boxId,
+        }
+        setOpening({ boxId: prize.boxId, miner: minerNew })
+      }
+
+      saveState(next)
+      flash(`¡Premio mensual ${prize.title} reclamado!`)
+      return next
+    })
+  }, [flash])
+
+  /** Operador: marca nota USDT del ganador como pagada (manual, sin API payout) */
+  const markMonthlyUsdtPaid = useCallback(
+    (month: string, place: MonthlyPrizePlace, operatorOk: boolean) => {
+      if (!operatorOk) {
+        flash('Solo el operador puede marcar pago USDT')
+        return
+      }
+      setState((s) => {
+        const cur = accrue(s, Date.now())
+        const next: GameState = {
+          ...cur,
+          monthlyWinnersHistory: cur.monthlyWinnersHistory.map((h) =>
+            h.monthKey !== month
+              ? h
+              : {
+                  ...h,
+                  slots: h.slots.map((sl) =>
+                    sl.place === place ? { ...sl, usdtPending: false } : sl,
+                  ),
+                },
+          ),
+          history: pushHistory(cur, {
+            id: uid(),
+            at: Date.now(),
+            amount: 0,
+            kind: 'monthly_prize',
+            note: `USDT pagado · ${month} · puesto #${place}`,
+          }),
+        }
+        saveState(next)
+        flash(`USDT #${place} · ${month} marcado pagado`)
+        return next
+      })
+    },
+    [flash],
+  )
+
   /**
    * Unlock gifts only after server claim consume (POST /api/me/operator/claim).
    * Passing a client boolean is not enough — caller must await claimOperatorGiftsOnServer first.
@@ -1175,6 +1311,12 @@ export function useGame() {
     mineBlocks: live.mineBlocks ?? [],
     minedTotal: live.minedTotal ?? 0,
     weekMined: live.weekMined ?? 0,
+    monthMined: live.monthMined ?? 0,
+    monthKey: live.monthKey ?? monthKey(),
+    monthlyWinnersHistory: live.monthlyWinnersHistory ?? [],
+    pendingMonthlyPrize: live.pendingMonthlyPrize ?? null,
+    claimMonthlyPrize,
+    markMonthlyUsdtPaid,
     referral: live.referral,
     season: live.season,
     operatorGiftsClaimed: giftsFullyClaimed(

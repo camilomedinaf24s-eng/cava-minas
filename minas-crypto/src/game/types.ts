@@ -1,6 +1,7 @@
 import type { AdRewardId } from './economy'
 import type { MineBlock } from './mineField'
 import type { BoxId, Miner } from './miners'
+import type { MonthlyWinnersRecord, PendingMonthlyPrize } from './ranking'
 import type { SkinId } from './season'
 
 export type ClaimRecord = {
@@ -20,6 +21,7 @@ export type ClaimRecord = {
     | 'referral'
     | 'season'
     | 'gift'
+    | 'monthly_prize'
   note?: string
 }
 
@@ -99,6 +101,13 @@ export type GameState = {
   /** MINE minado esta semana (ranking) */
   weekMined: number
   weekKey: string
+  /** MINE minado este mes calendario Bogotá (ranking mensual) */
+  monthMined: number
+  monthKey: string
+  /** Historial de ganadores top 3 por mes cerrado */
+  monthlyWinnersHistory: MonthlyWinnersRecord[]
+  /** Premio pendiente de reclamar tras cierre de mes (si quedaste top 3) */
+  pendingMonthlyPrize: PendingMonthlyPrize | null
   /** Regalos operador Andres Medina reclamados una vez (gen actual) */
   operatorGiftsClaimed: boolean
   /** Gen de regalos reclamada (2 = ambas míticas N6) */
