@@ -27,3 +27,5 @@ dist-ssr
 # Next default distDir
 .next
 out
+tsconfig.tsbuildinfo
+*.tsbuildinfo

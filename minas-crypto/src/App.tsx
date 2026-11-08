@@ -47,7 +47,15 @@ import {
 } from './game/audio'
 import { ENERGY_PACKS, type EnergyPack, type EnergyPackId } from './game/energy'
 import { BLOCK_META, LAYER_META, MAX_MINERS } from './game/mineField'
-import { yourRank, weeklyBoard } from './game/ranking'
+import {
+  MONTHLY_PRIZES,
+  daysLeftInMonth,
+  monthKey,
+  monthLabel,
+  monthlyBoard,
+  yourRank,
+  weeklyBoard,
+} from './game/ranking'
 import { SEASON, SEASON_TRACK, SKINS, type SkinId } from './game/season'
 import { STRIPE_PRODUCTS, type StripeProductId } from './game/stripeMock'
 import { OPERATOR_GIFTS } from './game/gifts'
@@ -361,6 +369,16 @@ export default function App() {
     [g.weekMined, g.minedTotal, g.crew.length],
   )
   const myRank = yourRank(board)
+  const monthBoard = useMemo(
+    () => monthlyBoard(g.monthMined || 0, g.crew.length, PLAYER),
+    [g.monthMined, g.crew.length],
+  )
+  const myMonthRank = yourRank(monthBoard)
+  const monthDaysLeft = daysLeftInMonth()
+  const monthTop = monthBoard[0]
+  const pendingPrize = g.pendingMonthlyPrize
+    ? MONTHLY_PRIZES.find((p) => p.place === g.pendingMonthlyPrize!.place)
+    : null
 
   useEffect(() => {
     if (modal?.type !== 'ad') {
@@ -650,6 +668,97 @@ export default function App() {
                         </li>
                       ))}
                     </ol>
+
+                    <div className="monthly-rank" id="monthly-ranking">
+                      <h2>Premio mensual · top 3</h2>
+                      <p className="monthly-meta">
+                        Temporada <strong>{monthLabel(g.monthKey || monthKey())}</strong>
+                        <span className="monthly-tz"> · America/Bogota</span>
+                        <br />
+                        Quedan <strong>{monthDaysLeft}</strong> día{monthDaysLeft === 1 ? '' : 's'} · tu puesto:{' '}
+                        <strong>#{myMonthRank}</strong> · minado mes {formatMine(g.monthMined || 0, 1)} MINE
+                        <br />
+                        #1 actual: <strong>{monthTop?.name ?? '—'}</strong>
+                        {monthTop ? ` · ${monthTop.mined} MINE` : ''}
+                      </p>
+
+                      <ul className="monthly-prizes">
+                        {MONTHLY_PRIZES.map((p) => {
+                          const entrant = monthBoard[p.place - 1]
+                          return (
+                            <li key={p.place} className={entrant?.you ? 'you' : ''}>
+                              <span className="mp-medal">{p.medal}</span>
+                              <div>
+                                <strong>{p.title}</strong>
+                                <em>{p.blurb}</em>
+                                <small>
+                                  Ahora: {entrant?.name ?? '—'} · {entrant?.mined ?? 0} MINE
+                                  {p.usdtNoteUsd > 0 ? ` · nota USDT $${p.usdtNoteUsd}` : ''}
+                                </small>
+                              </div>
+                            </li>
+                          )
+                        })}
+                      </ul>
+
+                      <ol className="rank-list monthly-board">
+                        {monthBoard.slice(0, 10).map((e, i) => (
+                          <li key={`m-${e.id}`} className={e.you ? 'you' : ''}>
+                            <span>#{i + 1}</span>
+                            <strong>{e.name}</strong>
+                            <em>{e.mined} MINE</em>
+                            <i>{e.miners} mineros</i>
+                          </li>
+                        ))}
+                      </ol>
+
+                      {pendingPrize && g.pendingMonthlyPrize && (
+                        <div className="monthly-claim">
+                          <p>
+                            ¡Quedaste <strong>#{g.pendingMonthlyPrize.place}</strong> en{' '}
+                            {monthLabel(g.pendingMonthlyPrize.monthKey)}! Reclama {pendingPrize.title}.
+                          </p>
+                          <button type="button" className="btn btn-primary" onClick={() => g.claimMonthlyPrize()}>
+                            Reclamar premio {pendingPrize.medal}
+                          </button>
+                        </div>
+                      )}
+
+                      {g.monthlyWinnersHistory.length > 0 && (
+                        <div className="monthly-history">
+                          <h3>Ganadores anteriores</h3>
+                          {g.monthlyWinnersHistory.slice(0, 6).map((rec) => (
+                            <div key={rec.monthKey} className="monthly-hist-row">
+                              <b>{monthLabel(rec.monthKey)}</b>
+                              <ul>
+                                {rec.slots.map((sl) => {
+                                  const pr = MONTHLY_PRIZES.find((x) => x.place === sl.place)
+                                  return (
+                                    <li key={`${rec.monthKey}-${sl.place}`}>
+                                      {pr?.medal ?? `#${sl.place}`} {sl.name}
+                                      {sl.you ? ' (tú)' : ''} · {sl.mined} MINE
+                                      {sl.claimed ? ' · reclamado' : ''}
+                                      {sl.usdtPending ? ` · USDT $${pr?.usdtNoteUsd ?? 0} pendiente` : ''}
+                                      {isOperator && sl.usdtPending && (
+                                        <button
+                                          type="button"
+                                          className="btn btn-ghost btn-tiny"
+                                          onClick={() =>
+                                            g.markMonthlyUsdtPaid(rec.monthKey, sl.place, true)
+                                          }
+                                        >
+                                          Marcar USDT pagado
+                                        </button>
+                                      )}
+                                    </li>
+                                  )
+                                })}
+                              </ul>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
                 {nav === 'pass' && (

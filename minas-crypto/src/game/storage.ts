@@ -10,8 +10,16 @@ import {
 import { createMineField, normalizeMineBlocks } from './mineField'
 import { createStarterMiner, type Miner } from './miners'
 import { makeReferralCode } from './referrals'
-import { weekKey } from './ranking'
+import {
+  monthKey,
+  monthlyBoard,
+  pendingPrizeFromRecord,
+  settleMonthlyWinners,
+  weekKey,
+  type MonthlyWinnersRecord,
+} from './ranking'
 import { SEASON, type SkinId } from './season'
+import { PLAYER } from './brand'
 import type { DailyCounters, GameState, ReferralState, SeasonState } from './types'
 
 function normalizeMiner(m: Miner): Miner {
@@ -90,8 +98,63 @@ export function defaultState(now = Date.now()): GameState {
     season: defaultSeason(),
     weekMined: 0,
     weekKey: weekKey(now),
+    monthMined: 0,
+    monthKey: monthKey(now),
+    monthlyWinnersHistory: [],
+    pendingMonthlyPrize: null,
     operatorGiftsClaimed: false,
     operatorGiftsGen: 0,
+  }
+}
+
+/**
+ * Si cambió el mes Bogotá: cierra top 3 del mes anterior, guarda historial,
+ * deja pending claim si el jugador quedó 1–3, y reinicia contador mensual.
+ */
+export function settleMonthIfNeeded(state: GameState, now = Date.now(), youMiners = 1): GameState {
+  const mk = monthKey(now)
+  const prevKey = state.monthKey || mk
+  if (prevKey === mk) {
+    if (
+      state.monthKey === mk &&
+      typeof state.monthMined === 'number' &&
+      Array.isArray(state.monthlyWinnersHistory) &&
+      'pendingMonthlyPrize' in state
+    ) {
+      return state
+    }
+    return {
+      ...state,
+      monthKey: mk,
+      monthMined: typeof state.monthMined === 'number' ? state.monthMined : 0,
+      monthlyWinnersHistory: Array.isArray(state.monthlyWinnersHistory)
+        ? state.monthlyWinnersHistory
+        : [],
+      pendingMonthlyPrize: state.pendingMonthlyPrize ?? null,
+    }
+  }
+
+  const history: MonthlyWinnersRecord[] = Array.isArray(state.monthlyWinnersHistory)
+    ? [...state.monthlyWinnersHistory]
+    : []
+  let pending = state.pendingMonthlyPrize ?? null
+
+  if (!history.some((h) => h.monthKey === prevKey)) {
+    const closedAt = Date.parse(`${prevKey}-15T12:00:00-05:00`) || now
+    const closedBoard = monthlyBoard(state.monthMined || 0, youMiners, PLAYER, closedAt)
+    const rec = settleMonthlyWinners(prevKey, closedBoard, now)
+    history.unshift(rec)
+    if (history.length > 24) history.length = 24
+    const fromRec = pendingPrizeFromRecord(rec)
+    if (fromRec) pending = fromRec
+  }
+
+  return {
+    ...state,
+    monthKey: mk,
+    monthMined: 0,
+    monthlyWinnersHistory: history,
+    pendingMonthlyPrize: pending,
   }
 }
 
@@ -132,6 +195,12 @@ export function loadState(): GameState {
     const mineBlocks = normalizeMineBlocks(parsed.mineBlocks)
     const wk = weekKey(now)
     const weekMined = parsed.weekKey === wk && typeof parsed.weekMined === 'number' ? parsed.weekMined : 0
+    const mk = monthKey(now)
+    const storedMonthKey = typeof parsed.monthKey === 'string' ? parsed.monthKey : mk
+    const storedMonthMined = typeof parsed.monthMined === 'number' ? parsed.monthMined : 0
+    const monthlyWinnersHistory: MonthlyWinnersRecord[] = Array.isArray(parsed.monthlyWinnersHistory)
+      ? (parsed.monthlyWinnersHistory as MonthlyWinnersRecord[]).slice(0, 24)
+      : []
     const referral: ReferralState = {
       ...defaultReferral(now),
       ...(parsed.referral ?? {}),
@@ -178,9 +247,15 @@ export function loadState(): GameState {
       season,
       weekMined,
       weekKey: wk,
+      monthMined: storedMonthMined,
+      monthKey: storedMonthKey,
+      monthlyWinnersHistory,
+      pendingMonthlyPrize: parsed.pendingMonthlyPrize ?? null,
       operatorGiftsGen: Number(parsed.operatorGiftsGen) || 0,
       operatorGiftsClaimed: Boolean(parsed.operatorGiftsClaimed),
     }
+
+    state = settleMonthIfNeeded(state, now, deployedMinerIds.length || miners.length || 1)
 
     // Repair ONLY if this save already claimed (localStorage). Never auto-claim for visitors.
     if (state.operatorGiftsClaimed || (state.operatorGiftsGen ?? 0) >= 2 || needsOperatorGiftRepair(state)) {

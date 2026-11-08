@@ -647,6 +647,113 @@ button:disabled {
   border-color: #ffe27a;
   background: #2a2410;
 }
+.monthly-rank {
+  margin-top: 22px;
+  padding-top: 16px;
+  border-top: 3px solid #3a342c;
+}
+.monthly-rank h2 {
+  margin-bottom: 6px;
+}
+.monthly-meta {
+  font-size: 13px;
+  line-height: 1.45;
+  color: #cfc4b4;
+  margin: 0 0 12px;
+}
+.monthly-tz {
+  color: #8a8074;
+  font-size: 11px;
+}
+.monthly-prizes {
+  list-style: none;
+  margin: 0 0 14px;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.monthly-prizes li {
+  display: grid;
+  grid-template-columns: 36px 1fr;
+  gap: 10px;
+  align-items: start;
+  background: #12100e;
+  border: 3px solid #000;
+  padding: 10px 12px;
+}
+.monthly-prizes li.you {
+  border-color: #ffe27a;
+  background: #2a2410;
+}
+.monthly-prizes .mp-medal {
+  font-size: 22px;
+  line-height: 1;
+}
+.monthly-prizes strong {
+  display: block;
+  color: #ffe27a;
+  font-family: var(--font-pixel);
+  font-size: 11px;
+  margin-bottom: 4px;
+}
+.monthly-prizes em {
+  display: block;
+  font-style: normal;
+  color: #e8dfd0;
+  font-size: 12px;
+}
+.monthly-prizes small {
+  display: block;
+  margin-top: 4px;
+  color: #9a9084;
+  font-size: 11px;
+}
+.monthly-board {
+  margin-top: 4px;
+}
+.monthly-claim {
+  margin-top: 14px;
+  padding: 12px;
+  border: 3px solid #ffe27a;
+  background: #2a2410;
+}
+.monthly-claim p {
+  margin: 0 0 10px;
+  font-size: 13px;
+}
+.monthly-history {
+  margin-top: 16px;
+}
+.monthly-history h3 {
+  font-family: var(--font-pixel);
+  font-size: 11px;
+  color: #cfc4b4;
+  margin: 0 0 8px;
+}
+.monthly-hist-row {
+  border: 2px solid #000;
+  background: #0e1012;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+.monthly-hist-row b {
+  color: #ffe27a;
+  font-family: var(--font-pixel);
+  font-size: 10px;
+}
+.monthly-hist-row ul {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.monthly-hist-row .btn-tiny {
+  margin-left: 8px;
+  padding: 4px 8px;
+  font-size: 9px;
+}
 .season-track {
   display: grid;
   gap: 6px;
